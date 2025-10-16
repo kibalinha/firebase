@@ -1,0 +1,7 @@
+{
+  "name": "ALMOX FIREBASE",
+  "description": "A comprehensive Inventory Management System SPA to control stock, movements, technicians, and suppliers, enhanced with AI features for item search and creation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

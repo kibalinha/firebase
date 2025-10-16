@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Controle de Estoque</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            'primary': '#1e293b',   // slate-800
+            'secondary': '#334155',  // slate-700
+            'accent': '#c72127',     // Red
+            'neutral': '#f8fafc',    // slate-50
+            'base-100': '#0f172a',   // slate-900
+            'info': '#c72127',       // Red
+            'success': '#22c55e',     // green-500
+            'warning': '#f59e0b',     // amber-500
+            'error': '#ef4444',      // red-500
+          }
+        }
+      }
+    }
+  </script>
+<style>
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  @keyframes slideOutRight {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+  .toast-slide-in {
+    animation: slideInRight 0.3s ease-out forwards;
+  }
+  .toast-slide-out {
+    animation: slideOutRight 0.3s ease-in forwards;
+  }
+  /* Estilos para o relatório de IA renderizado */
+  .report-content-wrapper h3 {
+    @apply text-lg font-bold mb-3 text-slate-900 dark:text-slate-100;
+  }
+  .report-content-wrapper p {
+    @apply mb-2 text-slate-600 dark:text-slate-300;
+  }
+  .report-content-wrapper table {
+    @apply w-full text-left border-collapse mb-4;
+  }
+  .report-content-wrapper th, .report-content-wrapper td {
+    @apply border border-slate-300 dark:border-slate-600 p-2;
+  }
+  .report-content-wrapper th {
+    @apply bg-slate-100 dark:bg-secondary;
+  }
+  .report-content-wrapper ul {
+    @apply list-disc list-inside pl-4 mb-4;
+  }
+  .report-content-wrapper li {
+    @apply mb-1;
+  }
+  /* Estilos para o tooltip do D3 */
+  .d3-tooltip {
+    border: 1px solid #c72127; /* accent */
+    background-color: #0f172a; /* base-100 */
+    color: #f8fafc; /* neutral */
+  }
+  /* Estilos para eixos e textos de gráficos D3 */
+  .d3-chart text {
+    fill: #475569; /* slate-600 */
+  }
+  .dark .d3-chart text {
+    fill: #cbd5e1; /* slate-300 */
+  }
+  .d3-chart .domain, .d3-chart .tick line {
+     stroke: #e2e8f0; /* slate-200 */
+  }
+   .dark .d3-chart .domain, .dark .d3-chart .tick line {
+     stroke: #475569; /* slate-600 */
+  }
+  /* Animação para a linha de scan do leitor de código de barras */
+  @keyframes scan {
+    0% { top: 0; }
+    100% { top: 100%; }
+  }
+  .animate-scan-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(to right, transparent, rgba(255,0,0,0.8), transparent);
+    box-shadow: 0 0 10px rgba(255,0,0,0.8);
+    animation: scan 3s ease-in-out infinite alternate;
+  }
+   /* Animação para a barra de progresso do relatório */
+  @keyframes progress-bar {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  .animate-progress-bar {
+    background-image: linear-gradient(to right, transparent, rgba(255,255,255,0.3), transparent);
+    animation: progress-bar 1.5s linear infinite;
+  }
+
+  /* Print styles for barcode labels */
+  @media print {
+    body * {
+      visibility: hidden;
+    }
+    .printable-area, .printable-area * {
+      visibility: visible;
+    }
+    .printable-area {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      padding: 10mm;
+      margin: 0;
+    }
+    .no-print {
+      display: none !important;
+    }
+    .break-inside-avoid {
+      break-inside: avoid;
+    }
+    @page {
+      size: auto;
+      margin: 0;
+    }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
+    "rxjs": "https://aistudiocdn.com/rxjs@^7.8.2?conditions=es2015",
+    "rxjs/operators": "https://aistudiocdn.com/rxjs@^7.8.2/operators?conditions=es2015",
+    "rxjs/ajax": "https://aistudiocdn.com/rxjs@^7.8.2/ajax?conditions=es2015",
+    "rxjs/webSocket": "https://aistudiocdn.com/rxjs@^7.8.2/webSocket?conditions=es2015",
+    "rxjs/testing": "https://aistudiocdn.com/rxjs@^7.8.2/testing?conditions=es2015",
+    "rxjs/fetch": "https://aistudiocdn.com/rxjs@^7.8.2/fetch?conditions=es2015",
+    "@angular/compiler": "https://next.esm.sh/@angular/compiler@^20.1.6-0?external=rxjs",
+    "@angular/platform-browser": "https://next.esm.sh/@angular/platform-browser@^20.1.6-0?external=rxjs",
+    "@angular/common/http": "https://next.esm.sh/@angular/common@^20.1.6-0/http?external=rxjs",
+    "@angular/core": "https://next.esm.sh/@angular/core@^20.1.6-0?external=rxjs",
+    "@google/genai": "https://esm.sh/@google/genai@0.12.0",
+    "@angular/common": "https://next.esm.sh/@angular/common@^20.1.6-0?external=rxjs",
+    "@angular/forms": "https://next.esm.sh/@angular/forms@^20.1.6-0?external=rxjs",
+    "d3": "https://esm.sh/d3@7",
+    "@angular/common/locales/pt": "https://next.esm.sh/@angular/common@^20.1.6-0/locales/pt?external=rxjs",
+    "@angular/core/testing": "https://next.esm.sh/@angular/core@^20.3.1/testing?external=rxjs",
+    "@zxing/library": "https://esm.sh/@zxing/library@0.21.0",
+    "@angular/router": "https://next.esm.sh/@angular/router@^20.1.6-0?external=rxjs"
+  }
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 dark:text-neutral antialiased transition-colors duration-300 dark:bg-gradient-to-br dark:from-slate-900 dark:to-slate-700">
+  <app-root></app-root>
+</body>
+</html>
