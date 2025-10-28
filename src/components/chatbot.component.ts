@@ -60,12 +60,12 @@ import { ChatMessage, View } from '../models';
     }
   `],
   template: `
-    <div class="fixed bottom-6 right-6 z-50">
+    <div class="fixed top-4 right-4 z-50">
       <!-- FAB -->
       <button 
         (click)="toggleChat()" 
-        class="bg-accent text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center hover:bg-info transition-transform duration-200 hover:scale-110">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
+        class="bg-accent text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:bg-info transition-transform duration-200 hover:scale-110">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
           <path d="M10 2a6 6 0 00-6 6v3.586l-1.707 1.707A1 1 0 003 15h14a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
         </svg>
       </button>
@@ -73,7 +73,7 @@ import { ChatMessage, View } from '../models';
       <!-- Chat Window -->
       @if (isChatOpen()) {
         <div 
-          class="absolute bottom-20 right-0 w-80 sm:w-96 h-[32rem] bg-white dark:bg-primary rounded-xl shadow-2xl flex flex-col origin-bottom-right"
+          class="absolute top-16 right-0 w-80 sm:w-96 h-[32rem] bg-white dark:bg-primary rounded-xl shadow-2xl flex flex-col origin-top-right"
           [class.chat-window-enter]="animationState() === 'entering'"
           [class.chat-window-leave]="animationState() === 'leaving'"
         >

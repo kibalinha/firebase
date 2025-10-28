@@ -7,12 +7,14 @@ import { User, UserRole, Permission, View } from '../models';
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private dbService = inject(DatabaseService);
-  private router = inject(Router);
+  // FIX: Explicitly type the router property to assist TypeScript's type inference.
+  private router: Router = inject(Router);
 
   currentUser = signal<User | null>(this.loadUserFromSession());
 
   isAuthenticated = computed(() => !!this.currentUser());
   isAdmin = computed(() => this.currentUser()?.role === UserRole.Admin);
+  isViewer = computed(() => this.currentUser()?.role === UserRole.Viewer);
 
   constructor() {
     // This effect ensures that if the user is cleared from another tab (e.g., logout),
@@ -53,7 +55,8 @@ export class AuthService {
     if (user && atob(user.passwordHash) === password_plaintext) {
       this.currentUser.set(user);
       this.saveUserToSession(user);
-      await this.dbService.logAction('USER_LOGIN', `Usuário '${user.username}' logado.`, user.username);
+      const displayName = user.name || user.username;
+      await this.dbService.logAction('USER_LOGIN', `Usuário '${displayName}' logado.`, displayName);
       return true;
     }
 
@@ -64,7 +67,8 @@ export class AuthService {
   logout() {
     const user = this.currentUser();
     if(user) {
-        this.dbService.logAction('USER_LOGOUT', `Usuário '${user.username}' deslogado.`, user.username);
+        const displayName = user.name || user.username;
+        this.dbService.logAction('USER_LOGOUT', `Usuário '${displayName}' deslogado.`, displayName);
     }
     this.currentUser.set(null);
     this.saveUserToSession(null);
@@ -76,6 +80,8 @@ export class AuthService {
     if (!user) return false;
     // Admins can do anything, regardless of the permissions array
     if (user.role === UserRole.Admin) return true; 
+    // Viewers have permissions defined in their array to see pages.
+    if (user.role === UserRole.Viewer) return user.permissions.includes(permission);
     return user.permissions.includes(permission);
   }
 

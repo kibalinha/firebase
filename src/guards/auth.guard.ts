@@ -4,7 +4,8 @@ import { AuthService } from '../services/auth.service';
 
 export const authGuard: CanActivateFn = (route, state) => {
   const authService = inject(AuthService);
-  const router = inject(Router);
+  // FIX: Explicitly type the router constant to assist TypeScript's type inference.
+  const router: Router = inject(Router);
 
   if (authService.isAuthenticated()) {
     return true;

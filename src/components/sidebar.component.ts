@@ -127,7 +127,7 @@ interface MenuItem {
       
       <div class="mt-auto p-2 border-t border-secondary">
         <div class="text-sm px-3 py-2 text-slate-300">
-            Logado como: <span class="font-bold">{{ authService.currentUser()?.username }}</span>
+            Logado como: <span class="font-bold">{{ authService.currentUser()?.name || authService.currentUser()?.username }}</span>
         </div>
         <button (click)="logout()" class="w-full flex items-center gap-3 py-2 px-3 rounded-md cursor-pointer text-sm transition-colors duration-200 text-slate-300 hover:bg-accent hover:text-white">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -159,6 +159,7 @@ export class SidebarComponent {
       subItems: [
         { label: 'Inventário Geral', view: 'inventory' },
         { label: 'Prateleira Vermelha', view: 'red_shelf' },
+        { label: 'Kits', view: 'kits' },
       ]
     },
     {
@@ -169,6 +170,7 @@ export class SidebarComponent {
         { label: 'Entrada de Itens', view: 'entry' },
         { label: 'Saída de Itens', view: 'exit' },
         { label: 'Listas de Coleta', view: 'picking_lists' },
+        { label: 'Reservas', view: 'reservations' },
       ]
     },
     {
@@ -201,7 +203,7 @@ export class SidebarComponent {
       key: 'analise',
       subItems: [
         { label: 'Relatórios', view: 'reports' },
-        { label: 'Alertas Inteligentes', view: 'smart_alerts' },
+        { label: 'Detecção de Anomalias', view: 'anomaly_detection' },
         { label: 'Estimar Demanda', view: 'demand_estimation' },
       ]
     },

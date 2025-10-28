@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, signal, viewChild, ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, viewChild, ElementRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 // FIX: Add FormGroup to the import list.
 import { ReactiveFormsModule, FormBuilder, Validators, FormGroup } from '@angular/forms';
@@ -21,19 +21,38 @@ import { AlmoxarifadoDB } from '../models';
           
           <!-- AI Configuration Section -->
           <div class="bg-white dark:bg-secondary p-6 rounded-lg shadow-md">
-            <h3 class="text-xl font-bold mb-2">Configuração da IA</h3>
+            <h3 class="text-xl font-bold mb-2">Configuração da IA (Gemini)</h3>
             <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">
-              A aplicação está configurada para usar um serviço de IA para funcionalidades avançadas.
+                Insira sua chave de API do Google Gemini para habilitar as funcionalidades de inteligência artificial.
             </p>
-            
-            <div class="flex items-center gap-2 mt-8">
-              <label class="font-semibold">Status:</label>
-              @if (geminiService.isConfigured()) {
-                <span class="px-2 py-1 bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-300 text-xs font-bold rounded-full">CONECTADO</span>
-              } @else {
-                <span class="px-2 py-1 bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-300 text-xs font-bold rounded-full">FALHA NA CONEXÃO</span>
-              }
-            </div>
+
+            <form [formGroup]="apiKeyForm" (ngSubmit)="saveApiKey()" class="space-y-4">
+                <div>
+                <label for="api-key" class="block text-sm font-medium">Chave de API</label>
+                <input 
+                    id="api-key"
+                    type="password" 
+                    formControlName="key"
+                    class="mt-1 block w-full px-3 py-2 bg-slate-100 dark:bg-primary border border-slate-300 dark:border-slate-600 rounded-md shadow-sm"
+                >
+                </div>
+                <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <label class="font-semibold">Status:</label>
+                    @if (geminiService.isConfigured()) {
+                    <span class="px-2 py-1 bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-300 text-xs font-bold rounded-full">CONFIGURADO</span>
+                    } @else {
+                    <span class="px-2 py-1 bg-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300 text-xs font-bold rounded-full">NÃO CONFIGURADO</span>
+                    }
+                </div>
+                <div class="flex gap-2">
+                    @if(geminiService.isConfigured()) {
+                    <button type="button" (click)="clearApiKey()" class="px-4 py-2 bg-slate-200 dark:bg-secondary rounded-md text-sm">Limpar Chave</button>
+                    }
+                    <button type="submit" class="px-4 py-2 bg-accent text-white rounded-md text-sm">Salvar Chave</button>
+                </div>
+                </div>
+            </form>
           </div>
 
           <!-- Theme Configuration Section -->
@@ -112,10 +131,11 @@ export class SettingsComponent {
   private toastService = inject(ToastService);
   geminiService = inject(GeminiService);
   themeService = inject(ThemeService);
-  private fb = inject(FormBuilder);
+  private fb: FormBuilder = inject(FormBuilder);
   db = this.dbService.db;
 
   categoryForm: FormGroup;
+  apiKeyForm: FormGroup;
 
   importInput = viewChild.required<ElementRef<HTMLInputElement>>('importInput');
   
@@ -129,6 +149,26 @@ export class SettingsComponent {
     this.categoryForm = this.fb.group({
       name: ['', Validators.required]
     });
+
+    this.apiKeyForm = this.fb.group({
+      key: ['']
+    });
+
+    effect(() => {
+        this.apiKeyForm.get('key')?.setValue(this.geminiService.apiKeySignal(), { emitEvent: false });
+    });
+  }
+  
+  saveApiKey() {
+    if (this.apiKeyForm.invalid) return;
+    const key = this.apiKeyForm.get('key')?.value?.trim() ?? '';
+    this.geminiService.setApiKey(key);
+  }
+
+  clearApiKey() {
+    this.geminiService.clearApiKey();
+    this.apiKeyForm.get('key')?.setValue('');
+    this.toastService.addToast('Chave de API removida.', 'info');
   }
 
   setTheme(theme: Theme) {

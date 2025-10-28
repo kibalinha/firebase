@@ -63,7 +63,8 @@ export class CommandPaletteComponent implements AfterViewInit {
   close = output<void>();
   command = output<Command>();
   
-  private router = inject(Router);
+  // FIX: Explicitly type the router property to assist TypeScript's type inference.
+  private router: Router = inject(Router);
   
   searchText = '';
   selectedIndex = signal(0);
@@ -78,7 +79,7 @@ export class CommandPaletteComponent implements AfterViewInit {
     const commands: Omit<Command, 'action'>[] = [
       { label: 'Ir para Dashboard', view: 'dashboard', icon: 'M10 2a1 1 0 00-1 1v1a1 1 0 002 0V3a1 1 0 00-1-1zM4 4h3a3 3 0 006 0h3a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm2.5 7.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z' },
       { label: 'Ir para Inventário', view: 'inventory', icon: 'M5 8a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V9a1 1 0 00-1-1H5zM2 5a2 2 0 012-2h12a2 2 0 012 2v2a1 1 0 11-2 0V5a1 1 0 00-1-1H5a1 1 0 00-1 1v12a1 1 0 001 1h2a1 1 0 110 2H4a2 2 0 01-2-2V5z' },
-      // FIX: Changed 'strategic_stock' to 'red_shelf' and updated label.
+      // FIX: Changed 'strategic_stock' to 'red_shelf' to match the existing route.
       { label: 'Ir para Prateleira Vermelha', view: 'red_shelf', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
       { label: 'Ir para Ordens de Compra', view: 'purchase_orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 8h.01M12 12h.01M12 16h.01M9 12h.01M9 16h.01' },
       { label: 'Ir para Modo Kiosk', view: 'kiosk', icon: 'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
@@ -91,7 +92,8 @@ export class CommandPaletteComponent implements AfterViewInit {
       { label: 'Gerenciar Técnicos', view: 'technicians', icon: 'M9 6a3 3 0 11-6 0 3 3 0 016 0zm-1.559 4.341a4.5 4.5 0 016.318 0 4.002 4.002 0 011.24 3.315V15a2 2 0 01-2 2H2.999a2 2 0 01-2-2v-1.344c0-1.288.521-2.48 1.34-3.315zM17 6a3 3 0 11-6 0 3 3 0 016 0zm-1.559 4.341a4.5 4.5 0 016.318 0 4.002 4.002 0 011.24 3.315V15a2 2 0 01-2 2h-1.001a1 1 0 100-2h1v-1.344a2.002 2.002 0 00-.67-1.488 2.5 2.5 0 00-3.536 0 2.002 2.002 0 00-.669 1.488V14h1a1 1 0 100 2h-1.001a2 2 0 01-2-2v-1.344c0-1.288.521-2.48 1.34-3.315z' },
       { label: 'Gerenciar Fornecedores', view: 'suppliers', icon: 'M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM18 8a1 1 0 01-1 1H4.41l1.42 1.42a1 1 0 11-1.41 1.41L1.71 9.12a1 1 0 010-1.41L4.41 5.17a1 1 0 011.41 1.41L4.41 8H17a1 1 0 011 1zM3 3a1 1 0 000 2h11.586l-1.293 1.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 00-1.414 1.414L14.586 3H3z' },
       { label: 'Ver Relatórios', view: 'reports', icon: 'M9 17v-4h4v4H9zM3 2a1 1 0 00-1 1v14a1 1 0 001 1h14a1 1 0 001-1V3a1 1 0 00-1-1H3zm3 2h8v2H6V4z' },
-      { label: 'Ver Alertas Inteligentes', view: 'smart_alerts', icon: 'M10 18a8 8 0 100-16 8 8 0 000 16zM9 9a1 1 0 012 0v3a1 1 0 11-2 0V9zm2 6a1 1 0 11-2 0 1 1 0 012 0z' },
+      // FIX: Changed invalid view 'smart_alerts' to 'anomaly_detection' to match the existing route.
+      { label: 'Ver Alertas Inteligentes', view: 'anomaly_detection', icon: 'M10 18a8 8 0 100-16 8 8 0 000 16zM9 9a1 1 0 012 0v3a1 1 0 11-2 0V9zm2 6a1 1 0 11-2 0 1 1 0 012 0z' },
       { label: 'Ver Log de Auditoria', view: 'audit_log', icon: 'M10 2a1 1 0 00-1 1v1a1 1 0 002 0V3a1 1 0 00-1-1zM3 5a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5zm3 4a1 1 0 00-1 1v6a1 1 0 102 0v-6a1 1 0 00-1-1zm5-1a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z' },
       { label: 'Ir para Configurações', view: 'settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM10 13a3 3 0 100-6 3 3 0 000 6z' },
     ];

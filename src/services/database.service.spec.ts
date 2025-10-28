@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { DatabaseService } from './database.service';
 import { DataProvider } from './data.provider';
 import { ToastService } from './toast.service';
-import { AlmoxarifadoDB, Item, Movement, RedShelfItem, StrategicSector, Supplier, UserRole } from '../models';
+import { AlmoxarifadoDB, Item, Movement, RedShelfItem, StrategicSector, Supplier, User, UserRole } from '../models';
 
 // FIX: Add ambient declarations for Jasmine types to resolve "Cannot find name" errors
 // in an environment where test runner type definitions are not available.

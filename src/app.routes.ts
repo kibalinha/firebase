@@ -50,6 +50,16 @@ export const APP_ROUTES: Routes = [
         title: 'Listas de Coleta', 
         loadComponent: () => import('./components/picking-lists.component').then(c => c.PickingListsComponent) 
       },
+       { 
+        path: 'kits', 
+        title: 'Kits', 
+        loadComponent: () => import('./components/kits.component').then(c => c.KitsComponent) 
+      },
+      { 
+        path: 'reservations', 
+        title: 'Reservas', 
+        loadComponent: () => import('./components/reservations.component').then(c => c.ReservationsComponent) 
+      },
       { 
         path: 'cycle_count', 
         title: 'Contagem Cíclica', 
@@ -69,57 +79,58 @@ export const APP_ROUTES: Routes = [
         path: 'technicians', 
         title: 'Técnicos', 
         data: { type: 'technicians' },
-        loadComponent: () => import('./components/management.component').then(c => c.ManagementComponent) 
+        loadComponent: () => import('./components/management.component').then(c => c.ManagementComponent)
       },
       { 
         path: 'suppliers', 
         title: 'Fornecedores', 
         data: { type: 'suppliers' },
-        loadComponent: () => import('./components/management.component').then(c => c.ManagementComponent) 
+        loadComponent: () => import('./components/management.component').then(c => c.ManagementComponent)
       },
-      { 
-        path: 'reports', 
-        title: 'Relatórios', 
-        loadComponent: () => import('./components/reports.component').then(c => c.ReportsComponent) 
+      {
+        path: 'reports',
+        title: 'Relatórios',
+        loadComponent: () => import('./components/reports.component').then(c => c.ReportsComponent)
       },
-      { 
-        path: 'smart_alerts', 
-        title: 'Alertas Inteligentes', 
-        loadComponent: () => import('./components/smart-alerts.component').then(c => c.SmartAlertsComponent) 
+      {
+        path: 'anomaly_detection',
+        title: 'Detecção de Anomalias',
+        loadComponent: () => import('./components/anomaly-detection.component').then(c => c.AnomalyDetectionComponent)
       },
-      { 
-        path: 'demand_estimation', 
-        title: 'Estimar Demanda', 
-        loadComponent: () => import('./components/demand-estimation.component').then(c => c.DemandEstimationComponent) 
+      {
+        path: 'demand_estimation',
+        title: 'Estimar Demanda',
+        loadComponent: () => import('./components/demand-estimation.component').then(c => c.DemandEstimationComponent)
       },
-      { 
-        path: 'audit_log', 
-        title: 'Log de Auditoria', 
-        loadComponent: () => import('./components/audit-log.component').then(c => c.AuditLogComponent) 
+      {
+        path: 'audit_log',
+        title: 'Log de Auditoria',
+        loadComponent: () => import('./components/audit-log.component').then(c => c.AuditLogComponent)
       },
-      { 
-        path: 'settings', 
-        title: 'Configurações',
-        canActivate: [adminGuard],
-        loadComponent: () => import('./components/settings.component').then(c => c.SettingsComponent) 
+      {
+        path: 'item_lifecycle',
+        title: 'Ciclo de Vida do Item',
+        loadComponent: () => import('./components/item-lifecycle.component').then(c => c.ItemLifecycleComponent)
       },
-       { 
-        path: 'users', 
+      {
+        path: 'kiosk',
+        title: 'Modo Kiosk',
+        loadComponent: () => import('./components/kiosk.component').then(c => c.KioskComponent)
+      },
+      {
+        path: 'users',
         title: 'Gerenciar Usuários',
         canActivate: [adminGuard],
-        loadComponent: () => import('./components/users.component').then(c => c.UsersComponent) 
+        loadComponent: () => import('./components/users.component').then(c => c.UsersComponent)
       },
-      { 
-        path: 'kiosk', 
-        title: 'Kiosk', 
-        loadComponent: () => import('./components/kiosk.component').then(c => c.KioskComponent) 
+      {
+        path: 'settings',
+        title: 'Configurações',
+        canActivate: [adminGuard],
+        loadComponent: () => import('./components/settings.component').then(c => c.SettingsComponent)
       },
-      { 
-        path: 'item_lifecycle', 
-        title: 'Ciclo de Vida', 
-        loadComponent: () => import('./components/item-lifecycle.component').then(c => c.ItemLifecycleComponent) 
-      },
-      { path: '**', redirectTo: 'dashboard' }
     ]
-  }
+  },
+  // Rota de fallback para qualquer URL não correspondida
+  { path: '**', redirectTo: 'dashboard' }
 ];

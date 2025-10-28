@@ -219,9 +219,9 @@ import { Movement, Item } from '../models';
                       <td class="p-2 font-bold text-center"
                         [class.text-error]="item.quantity <= item.reorderPoint && item.reorderPoint > 0 && item.quantity > 0"
                         [class.text-red-700]="item.quantity === 0">
-                        {{ item.quantity }}
+                        {{ item.quantity }} {{ item.unit }}
                       </td>
-                      <td class="p-2 text-slate-500 dark:text-slate-400 text-center">{{ item.reorderPoint }}</td>
+                      <td class="p-2 text-slate-500 dark:text-slate-400 text-center">{{ item.reorderPoint }} {{ item.unit }}</td>
                     </tr>
                   }
                 </tbody>

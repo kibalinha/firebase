@@ -1,12 +1,10 @@
-
-
 import { Component, ChangeDetectionStrategy, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators, FormControl } from '@angular/forms';
-// FIX: Import KitWithDetails from database service and Kit from models.
 import { DatabaseService, KitWithDetails } from '../services/database.service';
 import { ToastService } from '../services/toast.service';
 import { Kit } from '../models';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-kits',
@@ -133,7 +131,8 @@ import { Kit } from '../models';
 export class KitsComponent {
   private dbService = inject(DatabaseService);
   private toastService = inject(ToastService);
-  private fb = inject(FormBuilder);
+  private fb: FormBuilder = inject(FormBuilder);
+  private authService = inject(AuthService);
 
   kits = this.dbService.kitsWithDetails;
   isFormOpen = signal(false);
@@ -194,13 +193,17 @@ export class KitsComponent {
     };
 
     const formValue = this.kitForm.value;
-    const kitData = { ...this.currentKit(), ...formValue, createdAt: this.currentKit()?.createdAt || new Date().toISOString() };
-
+    
     if (this.currentKit()?.id) {
+      const kitData = { ...this.currentKit(), ...formValue };
       await this.dbService.updateItem('kits', kitData as Kit);
+      await this.dbService.logAction('UPDATE_KIT', `Kit '${kitData.name}' (ID: ${kitData.id}) atualizado.`);
       this.toastService.addToast('Kit atualizado com sucesso!', 'success');
     } else {
-      await this.dbService.addItem('kits', formValue);
+      // FIX: Explicitly type the return of addItem to ensure newKit has all properties of Kit.
+      const newKit = await this.dbService.addItem<Kit>('kits', formValue);
+      const itemsDetails = newKit.components.map(c => `${c.quantity}x '${this.getItemName(c.itemId)}'`).join(', ');
+      await this.dbService.logAction('CREATE_KIT', `Kit '${newKit.name}' (ID: ${newKit.id}) criado com componentes: ${itemsDetails}.`);
       this.toastService.addToast('Kit criado com sucesso!', 'success');
     }
     this.closeKitForm();
@@ -214,6 +217,7 @@ export class KitsComponent {
     const kit = this.kitToDelete();
     if (kit) {
       await this.dbService.deleteItem('kits', kit.id);
+      await this.dbService.logAction('DELETE_KIT', `Kit '${kit.name}' (ID: ${kit.id}) excluído.`);
       this.toastService.addToast('Kit excluído com sucesso!', 'success');
       this.kitToDelete.set(null);
     }

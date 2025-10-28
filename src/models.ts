@@ -13,7 +13,7 @@ export type View =
   | 'settings'
   | 'demand_estimation'
   | 'kiosk'
-  | 'smart_alerts'
+  | 'anomaly_detection'
   | 'cycle_count'
   | 'item_lifecycle'
   | 'purchase_orders'
@@ -25,42 +25,58 @@ export type View =
   | 'users'; // Added users view
 
 // A list of all possible views/features that can have permissions
+// FIX: Add missing permissions for kits and reservations to ensure they can be managed.
 export type Permission = View | 'manage_users' | 'manage_settings';
 
-export const ALL_PERMISSIONS: { id: Permission, label: string }[] = [
-    { id: 'dashboard', label: 'Dashboard' },
-    { id: 'inventory', label: 'Inventário Geral' },
-    { id: 'red_shelf', label: 'Prateleira Vermelha' },
-    { id: 'entry', label: 'Entrada de Itens' },
-    { id: 'exit', label: 'Saída de Itens' },
-    { id: 'technicians', label: 'Gerenciar Técnicos' },
-    { id: 'suppliers', label: 'Gerenciar Fornecedores' },
-    { id: 'reports', label: 'Relatórios' },
-    { id: 'audit_log', label: 'Log de Auditoria' },
-    { id: 'settings', label: 'Configurações Gerais' },
-    { id: 'demand_estimation', label: 'Estimar Demanda (IA)' },
-    { id: 'kiosk', label: 'Modo Kiosk' },
-    { id: 'smart_alerts', label: 'Alertas Inteligentes (IA)' },
-    { id: 'cycle_count', label: 'Contagem Cíclica' },
-    { id: 'item_lifecycle', label: 'Ciclo de Vida do Item' },
-    { id: 'purchase_orders', label: 'Ordens de Compra' },
-    { id: 'stocktake', label: 'Inventário Físico' },
-    { id: 'purchase_suggestion', label: 'Sugestão de Compra' },
-    { id: 'picking_lists', label: 'Listas de Coleta' },
-    { id: 'kits', label: 'Kits' },
-    { id: 'reservations', label: 'Reservas' },
-    { id: 'users', label: 'Gerenciar Usuários' },
+export const ALL_PERMISSIONS: { id: Permission, label: string, group: string }[] = [
+    // Geral
+    { id: 'dashboard', label: 'Acessar Dashboard', group: 'Geral' },
+    { id: 'kiosk', label: 'Usar Modo Kiosk', group: 'Geral' },
+
+    // Estoque e Itens
+    { id: 'inventory', label: 'Gerenciar Inventário Geral', group: 'Estoque e Itens' },
+    { id: 'red_shelf', label: 'Gerenciar Prateleira Vermelha', group: 'Estoque e Itens' },
+    { id: 'item_lifecycle', label: 'Ver Ciclo de Vida do Item', group: 'Estoque e Itens' },
+    { id: 'kits', label: 'Gerenciar Kits de Itens', group: 'Estoque e Itens' },
+
+    // Movimentações
+    { id: 'entry', label: 'Registrar Entrada de Itens', group: 'Movimentações' },
+    { id: 'exit', label: 'Registrar Saída de Itens', group: 'Movimentações' },
+    { id: 'picking_lists', label: 'Gerenciar Listas de Coleta', group: 'Movimentações' },
+    { id: 'reservations', label: 'Gerenciar Reservas de Estoque', group: 'Movimentações' },
+
+    // Compras e Fornecedores
+    { id: 'purchase_orders', label: 'Gerenciar Ordens de Compra', group: 'Compras e Fornecedores' },
+    { id: 'purchase_suggestion', label: 'Ver Sugestão de Compra', group: 'Compras e Fornecedores' },
+    { id: 'suppliers', label: 'Gerenciar Fornecedores', group: 'Compras e Fornecedores' },
+
+    // Contagem e Planejamento
+    { id: 'cycle_count', label: 'Executar Contagem Cíclica', group: 'Contagem e Planejamento' },
+    { id: 'stocktake', label: 'Executar Inventário Físico', group: 'Contagem e Planejamento' },
+
+    // Análise e IA
+    { id: 'reports', label: 'Visualizar Relatórios', group: 'Análise e IA' },
+    { id: 'anomaly_detection', label: 'Ver Detecção de Anomalias', group: 'Análise e IA' },
+    { id: 'demand_estimation', label: 'Estimar Demanda com IA', group: 'Análise e IA' },
+
+    // Administração
+    { id: 'technicians', label: 'Gerenciar Técnicos', group: 'Administração' },
+    { id: 'audit_log', label: 'Ver Log de Auditoria', group: 'Administração' },
+    { id: 'users', label: 'Gerenciar Usuários', group: 'Administração' },
+    { id: 'settings', label: 'Acessar Configurações', group: 'Administração' },
 ];
 
 
 export enum UserRole {
   Admin = 'Admin',
   User = 'User',
+  Viewer = 'Visualizador'
 }
 
 export interface User {
   id: string;
   username: string;
+  name: string;
   passwordHash: string; // Storing as base64 for this example
   role: UserRole;
   permissions: Permission[];
@@ -71,6 +87,7 @@ export interface Item {
   name: string;
   description: string;
   category: string;
+  unit: string;
   price: number;
   quantity: number;
   reorderPoint: number;

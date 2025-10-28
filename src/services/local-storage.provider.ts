@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { DataProvider, CollectionWithId, CreationPayload } from './data.provider';
-import { AlmoxarifadoDB, Item, Movement, AuditLog, Technician, Supplier, RedShelfItem, PurchaseOrderStatus, UserRole } from '../models';
+import { AlmoxarifadoDB, Item, Movement, AuditLog, Technician, Supplier, RedShelfItem, PurchaseOrderStatus, UserRole, User } from '../models';
 
 const DB_KEY = 'almoxarifadoDB';
 
@@ -30,6 +30,7 @@ function generateDefaultTestData(): AlmoxarifadoDB {
   db.users.push({
     id: 'user-admin-default',
     username: 'admin',
+    name: 'Administrador Padrão',
     passwordHash: btoa('admin123'), // Base64 encoding as a simple substitute for hashing
     role: UserRole.Admin,
     permissions: [] // Admin has all permissions implicitly
@@ -68,6 +69,14 @@ function generateDefaultTestData(): AlmoxarifadoDB {
     'Martelo de Pena', 'Chave de Fenda Phillips', 'Alicate de Corte', 'Trena 5m'
   ];
   
+  const itemUnits = [
+    'un.', 'un.', 'm', 'un.', 
+    'pç', 'L', 'rolo', 'un.',
+    'un.', 'par', 'pç', 'un.',
+    'm', 'un.', 'kg', 'un.',
+    'pç', 'pç', 'pç', 'm'
+  ];
+
   for (let i = 0; i < itemNames.length; i++) {
     const category = db.categories[i % (db.categories.length -1)]; // Avoid 'Outros'
     const name = itemNames[i];
@@ -79,6 +88,7 @@ function generateDefaultTestData(): AlmoxarifadoDB {
       name: name,
       description: `Descrição para ${name}`,
       category: category,
+      unit: itemUnits[i] || 'un.',
       price: price,
       preferredSupplierId: `supplier-${(i % db.suppliers.length) + 1}`,
       reorderPoint: reorderPoint,
@@ -172,7 +182,7 @@ export class LocalStorageProvider extends DataProvider {
     const newItem = {
         ...item,
         id: crypto.randomUUID(),
-        ...((collection === 'items' || collection === 'redShelfItems' || collection === 'purchaseOrders' || collection === 'reservations' || collection === 'kits') && { createdAt: new Date().toISOString() })
+        ...((collection === 'items' || collection === 'redShelfItems' || collection === 'purchaseOrders' || collection === 'reservations' || collection === 'kits' || collection === 'users') && { createdAt: new Date().toISOString() })
     } as unknown as T;
     
     (db[collection] as any[]).push(newItem);

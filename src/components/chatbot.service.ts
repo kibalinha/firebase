@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { signal } from '@angular/core';
-import { GeminiService } from './gemini.service';
-import { DatabaseService } from './database.service';
+import { GeminiService } from '../services/gemini.service';
+import { DatabaseService } from '../services/database.service';
 import { ChatMessage, View } from '../models';
 import { GenerateContentResponse } from '@google/genai';
 import { Type } from '@google/genai';

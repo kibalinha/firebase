@@ -1,12 +1,10 @@
-
-
 import { Component, ChangeDetectionStrategy, inject, computed, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
 import { DatabaseService } from '../services/database.service';
 import { ToastService } from '../services/toast.service';
-// FIX: Imported missing Reservation and ReservationStatus types.
 import { Reservation, ReservationStatus } from '../models';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-reservations',
@@ -167,7 +165,8 @@ import { Reservation, ReservationStatus } from '../models';
 export class ReservationsComponent {
   private dbService = inject(DatabaseService);
   private toastService = inject(ToastService);
-  private fb = inject(FormBuilder);
+  private fb: FormBuilder = inject(FormBuilder);
+  private authService = inject(AuthService);
   db = this.dbService.db;
   
   ReservationStatus = ReservationStatus;
@@ -197,7 +196,7 @@ export class ReservationsComponent {
     this.form = this.fb.group({
       name: [reservation?.name || '', Validators.required],
       technicianId: [reservation?.technicianId || this.db().technicians[0]?.id, Validators.required],
-      dueDate: [reservation?.dueDate || new Date().toISOString().split('T')[0], Validators.required],
+      dueDate: [(reservation?.dueDate || new Date().toISOString()).split('T')[0], Validators.required],
       items: this.fb.array(
         reservation?.items.map(i => this.createItemGroup(i.itemId, i.quantity)) || [],
         Validators.minLength(1)
@@ -225,14 +224,16 @@ export class ReservationsComponent {
     const formValue = this.form.value;
     const current = this.currentReservation();
     const data = { ...current, ...formValue, status: current?.status || ReservationStatus.Pendente, createdAt: current?.createdAt || new Date().toISOString() };
+    const itemsDetails = data.items.map((i: any) => `${i.quantity}x '${this.getItemName(i.itemId)}'`).join(', ');
 
     if (current?.id) {
       await this.dbService.updateItem('reservations', data as Reservation);
-      await this.dbService.logAction('UPDATE_RESERVATION', `Reserva "${data.name}" atualizada.`);
+      await this.dbService.logAction('UPDATE_RESERVATION', `Reserva '${data.name}' (ID: ${data.id}) atualizada. Itens: ${itemsDetails}.`);
       this.toastService.addToast('Reserva atualizada!', 'success');
     } else {
-      await this.dbService.addItem('reservations', data);
-      await this.dbService.logAction('CREATE_RESERVATION', `Reserva "${data.name}" criada.`);
+      // FIX: Explicitly type the return of addItem to ensure newReservation has all properties of Reservation.
+      const newReservation = await this.dbService.addItem<Reservation>('reservations', data);
+      await this.dbService.logAction('CREATE_RESERVATION', `Reserva '${newReservation.name}' (ID: ${newReservation.id}) criada para '${this.getTechnicianName(newReservation.technicianId)}'. Itens: ${itemsDetails}.`);
       this.toastService.addToast('Reserva criada!', 'success');
     }
     this.isFormOpen.set(false);
@@ -245,7 +246,7 @@ export class ReservationsComponent {
     const reservation = this.toConfirm()?.reservation;
     if (reservation) {
       await this.dbService.deleteItem('reservations', reservation.id);
-      await this.dbService.logAction('DELETE_RESERVATION', `Reserva "${reservation.name}" removida.`);
+      await this.dbService.logAction('DELETE_RESERVATION', `Reserva '${reservation.name}' (ID: ${reservation.id}) removida.`);
       this.toastService.addToast('Reserva excluída!', 'success');
       this.toConfirm.set(null);
     }
@@ -271,7 +272,7 @@ export class ReservationsComponent {
     }
     const updatedReservation = { ...reservation, status };
     await this.dbService.updateItem('reservations', updatedReservation);
-    await this.dbService.logAction('UPDATE_RESERVATION_STATUS', `Status da reserva "${reservation.name}" alterado para ${status}.`);
+    await this.dbService.logAction('UPDATE_RESERVATION_STATUS', `Status da reserva "${reservation.name}" (ID: ${reservation.id}) alterado para '${status}'.`);
     this.toastService.addToast(`Status da reserva alterado para ${status}!`, 'info');
   }
 }

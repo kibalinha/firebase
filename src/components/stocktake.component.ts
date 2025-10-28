@@ -100,10 +100,10 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
                                 @for(item of discrepancies(); track item.id) {
                                     <tr class="border-b dark:border-slate-700 font-medium" [class.bg-red-50]="item.difference !== 0" [class.dark:bg-red-900/20]="item.difference !== 0">
                                         <td class="p-2">{{ item.name }}</td>
-                                        <td class="p-2 text-center">{{ item.systemQuantity }}</td>
-                                        <td class="p-2 text-center">{{ item.countedQuantity }}</td>
+                                        <td class="p-2 text-center">{{ item.systemQuantity }} {{ item.unit }}</td>
+                                        <td class="p-2 text-center">{{ item.countedQuantity }} {{ item.unit }}</td>
                                         <td class="p-2 text-center font-bold" [class.text-red-500]="item.difference < 0" [class.text-green-500]="item.difference > 0">
-                                            {{ item.difference > 0 ? '+' : '' }}{{ item.difference }}
+                                            {{ item.difference > 0 ? '+' : '' }}{{ item.difference }} {{ item.unit }}
                                         </td>
                                     </tr>
                                 }
@@ -153,7 +153,7 @@ export class StocktakeComponent implements OnDestroy {
     isLoading = signal(false);
     
     itemsToCount = signal<Item[]>([]);
-    discrepancies = signal<{id: string, name: string, systemQuantity: number, countedQuantity: number, difference: number}[]>([]);
+    discrepancies = signal<{id: string, name: string, unit: string, systemQuantity: number, countedQuantity: number, difference: number}[]>([]);
     
     countForm: FormGroup = this.fb.group({ items: this.fb.array([]) });
 
@@ -195,6 +195,7 @@ export class StocktakeComponent implements OnDestroy {
           return {
             id: item.id,
             name: item.name,
+            unit: item.unit,
             systemQuantity: item.quantity,
             countedQuantity: counted,
             difference: counted - item.quantity,

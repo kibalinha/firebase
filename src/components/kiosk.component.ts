@@ -26,7 +26,7 @@ interface CartItem {
             <h1 class="text-4xl font-bold mb-2">Modo Kiosk</h1>
             <h2 class="text-2xl text-slate-600 dark:text-slate-300 mb-8">Quem está fazendo a retirada?</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              @for (tech of db().technicians; track tech.id) {
+              @for (tech of sortedTechnicians(); track tech.id) {
                 <button (click)="selectTechnician(tech)" class="bg-white dark:bg-primary p-6 rounded-lg shadow-lg hover:shadow-xl hover:scale-105 transition-transform duration-200 flex flex-col items-center gap-3">
                   <span class="text-5xl">👨‍🔧</span>
                   <span class="font-bold text-lg">{{ tech.name }}</span>
@@ -222,6 +222,10 @@ export class KioskComponent implements OnDestroy {
   
   addItemForm: FormGroup;
   passwordForm: FormGroup;
+
+  sortedTechnicians = computed(() => {
+    return this.db().technicians.slice().sort((a, b) => a.name.localeCompare(b.name));
+  });
 
   // --- Filtering ---
   kioskCategoryFilterControl = new FormControl<string | null>(null);

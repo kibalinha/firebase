@@ -7,7 +7,7 @@ import { Item, Supplier, View, PurchaseOrder, PurchaseOrderStatus, AlmoxarifadoD
 
 interface SuggestionGroup {
   // FIX: Updated interface to allow for items with no associated supplier.
-  supplier: Supplier | { id: null; name: 'Sem Fornecedor' };
+  supplier: Supplier | { id: null; name: string };
   items: Item[];
 }
 
@@ -32,7 +32,8 @@ interface SuggestionGroup {
                   <h3 class="text-xl font-bold">{{ group.supplier.name }}</h3>
                   <button 
                     (click)="generatePurchaseOrder(group)"
-                    class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
+                    [disabled]="!group.supplier.id"
+                    class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     Gerar Rascunho de OC
                   </button>
                 </div>
@@ -50,8 +51,8 @@ interface SuggestionGroup {
                     @for (item of group.items; track item.id) {
                       <tr class="border-b dark:border-slate-700">
                         <td class="p-2 font-medium">{{ item.name }}</td>
-                        <td class="p-2 text-center font-bold text-error">{{ item.quantity }}</td>
-                        <td class="p-2 text-center">{{ item.reorderPoint }}</td>
+                        <td class="p-2 text-center font-bold text-error">{{ item.quantity }} {{ item.unit }}</td>
+                        <td class="p-2 text-center">{{ item.reorderPoint }} {{ item.unit }}</td>
                         <td class="p-2 text-right">{{ item.price | currency:'BRL' }}</td>
                       </tr>
                     }
@@ -63,7 +64,7 @@ interface SuggestionGroup {
                       <div class="p-3 rounded-md bg-slate-50 dark:bg-secondary">
                         <p class="font-medium text-slate-800 dark:text-slate-100">{{ item.name }}</p>
                         <div class="flex justify-between items-end text-sm mt-1">
-                          <p class="text-slate-600 dark:text-slate-300">Estoque: <span class="font-bold text-error">{{ item.quantity }}</span> / {{ item.reorderPoint }}</p>
+                          <p class="text-slate-600 dark:text-slate-300">Estoque: <span class="font-bold text-error">{{ item.quantity }} {{ item.unit }}</span> / {{ item.reorderPoint }} {{ item.unit }}</p>
                           <p class="text-slate-500 dark:text-slate-400">{{ item.price | currency:'BRL' }}</p>
                         </div>
                       </div>
@@ -91,39 +92,35 @@ export class PurchaseSuggestionComponent {
   db = this.dbService.db;
   navigateTo = output<View>();
 
-  suggestions: Signal<SuggestionGroup[]>;
-
-  constructor() {
-    this.suggestions = computed((): SuggestionGroup[] => {
-      const itemsToReorder = this.db().items.filter(item => item.quantity <= item.reorderPoint && item.reorderPoint > 0);
-      if (itemsToReorder.length === 0) {
-        return [];
+  suggestions: Signal<SuggestionGroup[]> = computed((): SuggestionGroup[] => {
+    const itemsToReorder = this.db().items.filter(item => item.quantity <= item.reorderPoint && item.reorderPoint > 0);
+    if (itemsToReorder.length === 0) {
+      return [];
+    }
+    
+    const suppliers = this.db().suppliers;
+    const grouped = itemsToReorder.reduce((acc, item) => {
+      const supplierId = item.preferredSupplierId || 'none';
+      if (!acc[supplierId]) {
+        acc[supplierId] = [];
       }
-      
-      const suppliers = this.db().suppliers;
-      const grouped = itemsToReorder.reduce((acc, item) => {
-        const supplierId = item.preferredSupplierId || 'none';
-        if (!acc[supplierId]) {
-          acc[supplierId] = [];
-        }
-        acc[supplierId].push(item);
-        return acc;
-      }, {} as Record<string, Item[]>);
-  
-      return Object.keys(grouped).map(supplierId => {
-        const foundSupplier = suppliers.find(s => s.id === supplierId);
-        // FIX: Explicitly define the supplier object to match the SuggestionGroup union type, resolving a type inference mismatch.
-        const supplierForGroup: Supplier | { id: null; name: 'Sem Fornecedor' } = foundSupplier
-          ? foundSupplier
-          : { id: null, name: 'Sem Fornecedor' };
-          
-        return {
-          supplier: supplierForGroup,
-          items: grouped[supplierId],
-        };
-      }).sort((a,b) => a.supplier.name.localeCompare(b.supplier.name));
-    });
-  }
+      acc[supplierId].push(item);
+      return acc;
+    }, {} as Record<string, Item[]>);
+
+    return Object.keys(grouped).map(supplierId => {
+      const foundSupplier = suppliers.find(s => s.id === supplierId);
+      // FIX: Explicitly define the supplier object to match the SuggestionGroup union type, resolving a type inference mismatch.
+      const supplierForGroup: Supplier | { id: null; name: string } = foundSupplier
+        ? foundSupplier
+        : { id: null, name: 'Sem Fornecedor' };
+        
+      return {
+        supplier: supplierForGroup,
+        items: grouped[supplierId],
+      };
+    }).sort((a,b) => a.supplier.name.localeCompare(b.supplier.name));
+  });
 
   async generatePurchaseOrder(group: SuggestionGroup) {
     if (!group.supplier.id) {

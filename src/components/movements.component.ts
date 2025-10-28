@@ -9,6 +9,7 @@ import { ImageRecognitionComponent } from './image-recognition.component';
 import { GeminiService } from '../services/gemini.service';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-movements',
@@ -37,9 +38,11 @@ import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
       }
 
       <div class="flex justify-end mb-4 gap-2">
-        <button (click)="openMovementForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
-          Registrar {{ movementType() === 'in' ? 'Entrada' : 'Saída' }}
-        </button>
+        @if (!authService.isViewer()) {
+          <button (click)="openMovementForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
+            Registrar {{ movementType() === 'in' ? 'Entrada' : 'Saída' }}
+          </button>
+        }
       </div>
 
       <div class="flex-grow overflow-auto">
@@ -65,6 +68,7 @@ import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
                    @if (sortColumn() === 'technicianId') { <span class="ml-1">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span> }
                 </th>
               }
+              <th class="p-3">Observações</th>
             </tr>
           </thead>
           <tbody>
@@ -72,14 +76,15 @@ import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
               <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-primary">
                 <td class="p-3">{{ movement.date | date:'dd/MM/yyyy' }}</td>
                 <td class="p-3">{{ getItemName(movement.itemId) }}</td>
-                <td class="p-3">{{ movement.quantity }}</td>
+                <td class="p-3">{{ movement.quantity }} {{ getItemUnit(movement.itemId) }}</td>
                 @if (movementType() === 'out') {
                   <td class="p-3">{{ getTechnicianName(movement.technicianId) }}</td>
                 }
+                <td class="p-3 text-xs italic text-slate-500 dark:text-slate-400">{{ movement.notes }}</td>
               </tr>
             } @empty {
               <tr>
-                <td [attr.colspan]="movementType() === 'out' ? 4 : 3" class="p-4 text-center text-slate-500 dark:text-slate-400">Nenhuma movimentação encontrada.</td>
+                <td [attr.colspan]="movementType() === 'out' ? 5 : 4" class="p-4 text-center text-slate-500 dark:text-slate-400">Nenhuma movimentação encontrada.</td>
               </tr>
             }
           </tbody>
@@ -94,11 +99,16 @@ import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
                   <p class="font-mono text-sm text-slate-500 dark:text-slate-400">{{ movement.date | date:'dd/MM/yy' }}</p>
                 </div>
                 <div class="mt-2 text-sm">
-                  <p>Quantidade: <span class="font-bold">{{ movement.quantity }}</span></p>
+                  <p>Quantidade: <span class="font-bold">{{ movement.quantity }} {{ getItemUnit(movement.itemId) }}</span></p>
                   @if (movementType() === 'out') {
                     <p>Técnico: <span class="font-medium">{{ getTechnicianName(movement.technicianId) }}</span></p>
                   }
                 </div>
+                @if (movement.notes) {
+                  <p class="mt-2 pt-2 border-t border-dashed border-slate-200 dark:border-slate-700 text-xs italic text-slate-500 dark:text-slate-400">
+                    <strong>Obs:</strong> {{ movement.notes }}
+                  </p>
+                }
               </div>
             } @empty {
               <div class="p-4 text-center text-slate-500 dark:text-slate-400 bg-white dark:bg-secondary rounded-lg">Nenhuma movimentação encontrada.</div>
@@ -161,13 +171,18 @@ import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
                     </button>
                   }
                 </div>
+                @if(movementType() === 'out' && selectedItemInForm(); as item) {
+                    <div class="mt-2 text-xs p-2 bg-slate-100 dark:bg-secondary rounded-md text-slate-500 dark:text-slate-400">
+                        Estoque disponível: <span class="font-bold text-accent">{{ item.availableStock }} {{ item.unit }}</span>
+                    </div>
+                }
               </div>
               @if (movementType() === 'out') {
                 <div>
                   <label class="block text-sm mb-1 font-medium">Técnico</label>
                   <select formControlName="technicianId" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
                     <option [ngValue]="null" disabled>Selecione um técnico</option>
-                    @for(tech of db().technicians; track tech.id) {
+                    @for(tech of sortedTechnicians(); track tech.id) {
                       <option [value]="tech.id">{{ tech.name }}</option>
                     }
                   </select>
@@ -181,6 +196,12 @@ import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
                 <label class="block text-sm mb-1 font-medium">Data</label>
                 <input type="date" formControlName="date" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
               </div>
+              @if (movementType() === 'out') {
+                <div>
+                  <label class="block text-sm mb-1 font-medium">Observação (Opcional)</label>
+                  <textarea formControlName="notes" rows="2" placeholder="Ex: material para reparo na sala X" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded"></textarea>
+                </div>
+              }
             </div>
             <div class="flex justify-end gap-4 mt-6 pt-4 border-t border-slate-200 dark:border-secondary">
               <button type="button" (click)="isFormOpen.set(false)" class="px-4 py-2 bg-slate-200 dark:bg-secondary rounded">Cancelar</button>
@@ -247,6 +268,7 @@ export class MovementsComponent implements OnDestroy {
   private toastService = inject(ToastService);
   private fb = inject(FormBuilder);
   private geminiService = inject(GeminiService);
+  authService = inject(AuthService);
   db = this.dbService.db;
 
   private destroy$ = new Subject<void>();
@@ -256,7 +278,8 @@ export class MovementsComponent implements OnDestroy {
   sortColumn = signal<keyof Movement | ''>('date');
   sortDirection = signal<'asc' | 'desc'>('desc');
   
-  movementForm!: FormGroup;
+  movementForm: FormGroup;
+  selectedItemInForm = signal<ItemWithAvailableStock | null>(null);
   
   // --- Filtering signals and controls ---
   categoryFilterControl = new FormControl<string | null>(null);
@@ -264,6 +287,10 @@ export class MovementsComponent implements OnDestroy {
 
   allItems = computed((): ItemWithAvailableStock[] => {
     return this.dbService.itemsWithAvailableStock().sort((a,b) => a.name.localeCompare(b.name));
+  });
+
+  sortedTechnicians = computed(() => {
+    return this.db().technicians.slice().sort((a, b) => a.name.localeCompare(b.name));
   });
 
   selectableItems = computed((): ItemWithAvailableStock[] => {
@@ -315,11 +342,26 @@ export class MovementsComponent implements OnDestroy {
   });
 
   constructor() {
+    this.movementForm = this.fb.group({
+      itemName: [null, Validators.required],
+      quantity: [1, [Validators.required, Validators.min(1)]],
+      date: [new Date().toISOString().split('T')[0], Validators.required],
+      technicianId: [null],
+      notes: ['']
+    });
+    
     this.categoryFilterControl.valueChanges.pipe(
       takeUntil(this.destroy$)
     ).subscribe(category => {
       this.selectedCategory.set(category || null);
-      this.movementForm?.get('itemName')?.setValue(null);
+      this.movementForm.get('itemName')?.setValue(null);
+    });
+
+    this.movementForm.get('itemName')?.valueChanges.pipe(
+      takeUntil(this.destroy$)
+    ).subscribe(name => {
+      const foundItem = this.allItems().find(i => i.name === name);
+      this.selectedItemInForm.set(foundItem || null);
     });
   }
 
@@ -347,18 +389,34 @@ export class MovementsComponent implements OnDestroy {
     return 'Desconhecido';
   }
 
+  getItemUnit(id: string): string {
+    const item = this.db().items.find(i => i.id === id);
+    return item?.unit || '';
+  }
+
   getTechnicianName(id?: string | null): string { return !id ? 'N/A' : this.db().technicians.find(t => t.id === id)?.name || 'Desconhecido'; }
 
   openMovementForm(itemId: string | null = null) {
     const initialItem = itemId ? this.allItems().find(i => i.id === itemId) : null;
 
-    this.movementForm = this.fb.group({
-      itemName: [initialItem?.name ?? null, Validators.required],
-      quantity: [1, [Validators.required, Validators.min(1)]],
-      date: [new Date().toISOString().split('T')[0], Validators.required],
-      technicianId: [null, this.movementType() === 'out' ? Validators.required : []]
+    this.movementForm.reset({
+      itemName: initialItem?.name ?? null,
+      quantity: 1,
+      date: new Date().toISOString().split('T')[0],
+      technicianId: null,
+      notes: ''
     });
-    // Reset filters
+    
+    const technicianControl = this.movementForm.get('technicianId');
+    if (this.movementType() === 'out') {
+      technicianControl?.setValidators(Validators.required);
+    } else {
+      technicianControl?.clearValidators();
+    }
+    technicianControl?.updateValueAndValidity();
+    
+    this.selectedItemInForm.set(initialItem || null);
+    
     this.categoryFilterControl.setValue(null, { emitEvent: false });
     this.selectedCategory.set(null);
     this.isFormOpen.set(true);
@@ -379,7 +437,8 @@ export class MovementsComponent implements OnDestroy {
       type: this.movementType(),
       quantity: formValue.quantity,
       date: formValue.date,
-      technicianId: this.movementType() === 'out' ? formValue.technicianId : null
+      technicianId: this.movementType() === 'out' ? formValue.technicianId : null,
+      notes: formValue.notes || ''
     };
     const result = await this.dbService.addMovement(movement);
     if (result.success) {
@@ -446,7 +505,7 @@ export class MovementsComponent implements OnDestroy {
     this.stopScanner();
   }
 
-  async handleItemRecognizedForExit(data: { name: string; description: string; category: string }) {
+  async handleItemRecognizedForExit(data: { name: string; unit: string; description: string; category: string }) {
     this.isImageRecognitionOpen.set(false);
     
     if (!this.geminiService.isConfigured()) {

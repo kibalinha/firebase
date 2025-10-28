@@ -19,20 +19,20 @@ type SortableLogKey = keyof AuditLog;
         <table class="w-full text-left hidden md:table">
           <thead class="sticky top-0 bg-slate-50 dark:bg-secondary">
             <tr class="border-b border-slate-200 dark:border-slate-600">
-              <th class="p-3 cursor-pointer" (click)="handleSort('timestamp')">
+              <th class="p-3 cursor-pointer w-48" (click)="handleSort('timestamp')">
                 Data/Hora
                  @if (sortColumn() === 'timestamp') {
                   <span class="ml-1">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
                 }
               </th>
-              <th class="p-3 cursor-pointer" (click)="handleSort('action')">
+              <th class="p-3 cursor-pointer w-64" (click)="handleSort('action')">
                 Ação
                  @if (sortColumn() === 'action') {
                   <span class="ml-1">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
                 }
               </th>
               <th class="p-3">Detalhes</th>
-              <th class="p-3 cursor-pointer" (click)="handleSort('user')">
+              <th class="p-3 cursor-pointer w-48" (click)="handleSort('user')">
                 Usuário
                  @if (sortColumn() === 'user') {
                   <span class="ml-1">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
@@ -43,10 +43,14 @@ type SortableLogKey = keyof AuditLog;
           <tbody>
             @for(log of paginatedLogs(); track log.id) {
               <tr class="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-primary">
-                <td class="p-3 whitespace-nowrap">{{ log.timestamp | date:'dd/MM/yyyy HH:mm:ss' }}</td>
-                <td class="p-3"><span class="bg-slate-200 text-slate-700 dark:bg-primary dark:text-slate-200 px-2 py-1 rounded-full text-xs">{{ log.action }}</span></td>
-                <td class="p-3">{{ log.details }}</td>
-                <td class="p-3">{{ log.user }}</td>
+                <td class="p-3 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{{ log.timestamp | date:'dd/MM/yyyy HH:mm:ss' }}</td>
+                <td class="p-3">
+                  <span class="px-2.5 py-1 rounded-full text-xs font-semibold" [class]="getActionClass(log.action)">
+                    {{ formatActionTitle(log.action) }}
+                  </span>
+                </td>
+                <td class="p-3 text-sm text-slate-700 dark:text-slate-200">{{ log.details }}</td>
+                <td class="p-3 font-medium">{{ log.user }}</td>
               </tr>
             } @empty {
               <tr>
@@ -67,10 +71,12 @@ type SortableLogKey = keyof AuditLog;
         <!-- Card List for Mobile -->
         <div class="md:hidden space-y-3">
             @for(log of paginatedLogs(); track log.id) {
-              <div class="bg-white dark:bg-secondary rounded-lg p-4 shadow">
+              <div class="bg-white dark:bg-secondary rounded-lg p-4 shadow border-l-4" [class]="getActionClass(log.action, true)">
                 <div class="flex justify-between items-start">
                   <div>
-                    <span class="bg-slate-200 text-slate-700 dark:bg-primary dark:text-slate-200 px-2 py-1 rounded-full text-xs font-semibold">{{ log.action }}</span>
+                    <span class="px-2 py-1 rounded-full text-xs font-semibold" [class]="getActionClass(log.action)">
+                      {{ formatActionTitle(log.action) }}
+                    </span>
                     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ log.timestamp | date:'dd/MM/yy HH:mm' }} por {{log.user}}</p>
                   </div>
                 </div>
@@ -156,6 +162,33 @@ export class AuditLogComponent {
     } else {
       this.sortColumn.set(column);
       this.sortDirection.set('asc');
+    }
+  }
+
+  formatActionTitle(action: string): string {
+    return action.replace(/_/g, ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+  }
+
+  getActionClass(action: string, forBorder: boolean = false): string {
+    const actionPrefix = action.split('_')[0];
+    switch (actionPrefix) {
+      case 'CREATE':
+      case 'ENTRADA':
+      case 'RECEIVE':
+        return forBorder ? 'border-green-500' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'UPDATE':
+      case 'ADJUST':
+      case 'SEND':
+      case 'PROCESS':
+      case 'FULFILL':
+      case 'SAVE':
+        return forBorder ? 'border-blue-500' : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case 'DELETE':
+        return forBorder ? 'border-red-500' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+      case 'SAIDA':
+        return forBorder ? 'border-amber-500' : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+      default:
+        return forBorder ? 'border-slate-500' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200';
     }
   }
 

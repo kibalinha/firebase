@@ -4,6 +4,7 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators } fr
 import { DatabaseService } from '../services/database.service';
 import { ToastService } from '../services/toast.service';
 import { PurchaseOrder, PurchaseOrderItem, PurchaseOrderStatus } from '../models';
+import { AuthService } from '../services/auth.service';
 
 declare var jspdf: any;
 
@@ -105,106 +106,118 @@ declare var jspdf: any;
               <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-slate-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
               </svg>
-              <h3 class="text-lg font-semibold text-slate-700 dark:text-slate-200">Nenhuma Ordem de Compra encontrada</h3>
-              <p class="text-sm mt-1">Crie uma nova Ordem de Compra para solicitar itens a um fornecedor.</p>
-              <button (click)="openForm()" class="mt-4 bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors text-sm">
-                + Criar Ordem de Compra
-              </button>
+              <p class="text-lg font-semibold">Nenhuma Ordem de Compra</p>
+              <p class="text-slate-500 dark:text-slate-400 mt-2">Crie sua primeira ordem de compra para começar a repor o estoque.</p>
           </div>
         }
       </div>
     </div>
 
-    <!-- Form Modal -->
-    @if(isFormOpen()) {
+    <!-- Add/Edit Form Modal -->
+    @if (isFormOpen()) {
       <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-40">
         <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-          <h3 class="text-xl font-bold mb-4">{{ currentPO()?.id ? 'Editar' : 'Nova' }} Ordem de Compra</h3>
-          <form [formGroup]="poForm" (ngSubmit)="savePO()" class="flex-grow overflow-y-auto pr-2">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <select formControlName="supplierId" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
-                    <option [ngValue]="null">Selecione um fornecedor</option>
-                    @for(s of db().suppliers; track s.id) { <option [value]="s.id">{{s.name}}</option> }
-                </select>
-                <input type="text" formControlName="poNumber" placeholder="Número da OC (ex: PO-2024-001)" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
-                <input type="text" formControlName="status" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" [readOnly]="true" />
-            </div>
-            <textarea formControlName="notes" placeholder="Notas adicionais..." rows="2" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded mb-4"></textarea>
-
-            <h4 class="font-bold mb-2">Itens do Pedido</h4>
-            <div formArrayName="items" class="space-y-2">
-              @for(itemGroup of poItemsArray.controls; track $index) {
-                <div [formGroupName]="$index" class="grid grid-cols-12 gap-2 p-2 rounded bg-slate-50 dark:bg-secondary">
-                  <select formControlName="itemId" class="col-span-6 bg-white dark:bg-primary p-2 rounded">
-                    @for(i of db().items; track i.id) { <option [value]="i.id">{{i.name}}</option> }
+          <h3 class="text-xl font-bold mb-4">{{ poToEdit()?.id ? 'Editar' : 'Nova' }} Ordem de Compra</h3>
+          
+          <form [formGroup]="form" (ngSubmit)="save()" class="flex-grow overflow-y-auto pr-2">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm mb-1">Fornecedor</label>
+                  <select formControlName="supplierId" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
+                    @for(s of db().suppliers; track s.id) {
+                      <option [value]="s.id">{{s.name}}</option>
+                    }
                   </select>
-                  <input type="number" formControlName="quantity" placeholder="Qtd." class="col-span-2 bg-white dark:bg-primary p-2 rounded text-center">
-                  <input type="number" formControlName="unitPrice" placeholder="Preço" class="col-span-3 bg-white dark:bg-primary p-2 rounded text-right">
-                  <button type="button" (click)="removePoItem($index)" class="col-span-1 text-slate-400 hover:text-error">🗑️</button>
+                </div>
+                 <div>
+                  <label class="block text-sm mb-1">Notas (Opcional)</label>
+                  <input type="text" formControlName="notes" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
+                </div>
+            </div>
+
+            <h4 class="text-lg font-semibold mb-2">Itens do Pedido</h4>
+            <div formArrayName="items" class="space-y-2">
+              @for(itemGroup of itemsArray.controls; track $index) {
+                <div [formGroupName]="$index" class="grid grid-cols-12 gap-2 items-center bg-slate-50 dark:bg-secondary p-2 rounded">
+                  <div class="col-span-6">
+                     <input 
+                        type="text"
+                        list="available-items-list"
+                        formControlName="itemName"
+                        autocomplete="off"
+                        placeholder="Digite para buscar um item..."
+                        class="w-full bg-white dark:bg-primary p-2 rounded"
+                      />
+                  </div>
+                  <div class="col-span-2">
+                    <input type="number" formControlName="quantity" min="1" class="w-full bg-white dark:bg-primary p-2 rounded">
+                  </div>
+                  <div class="col-span-3">
+                    <input type="number" formControlName="unitPrice" min="0" step="0.01" class="w-full bg-white dark:bg-primary p-2 rounded">
+                  </div>
+                  <button type="button" (click)="removeItem($index)" class="col-span-1 p-1 text-slate-400 hover:text-error transition-colors">🗑️</button>
                 </div>
               }
             </div>
-            <button type="button" (click)="addPoItem()" class="mt-2 text-sm text-accent hover:underline">+ Adicionar Item</button>
+             <datalist id="available-items-list">
+                @for (item of availableItems(); track item.id) {
+                  <option [value]="item.name"></option>
+                }
+              </datalist>
+            <button type="button" (click)="addItem()" class="mt-2 text-sm text-accent hover:underline">+ Adicionar Item</button>
 
             <div class="flex justify-end gap-4 mt-6 pt-4 border-t border-slate-200 dark:border-secondary">
               <button type="button" (click)="isFormOpen.set(false)" class="px-4 py-2 bg-slate-200 dark:bg-secondary rounded">Cancelar</button>
-              <button type="submit" [disabled]="poForm.invalid || poItemsArray.length === 0" class="px-4 py-2 bg-accent text-white rounded disabled:opacity-50">Salvar Rascunho</button>
+              <button type="submit" [disabled]="form.invalid" class="px-4 py-2 bg-accent text-white rounded disabled:opacity-50">Salvar Rascunho</button>
             </div>
           </form>
         </div>
       </div>
     }
 
-    <!-- Receive Modal -->
-    @if(isReceiveModalOpen() && currentPO(); as po) {
-       <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-40">
-        <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <h3 class="text-xl font-bold mb-4">Receber Itens da OC: {{ po.poNumber }}</h3>
-            <form [formGroup]="receiveForm" (ngSubmit)="confirmReception()" class="flex-grow overflow-y-auto pr-2">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="border-b dark:border-slate-600">
-                            <th class="p-2">Item</th>
-                            <th class="p-2">Pedido</th>
-                            <th class="p-2">Recebido</th>
-                            <th class="p-2">Recebendo Agora</th>
-                        </tr>
-                    </thead>
-                    <tbody formArrayName="receivedItems">
-                       @for(itemControl of receiveItemsArray.controls; track $index) {
-                            <tr [formGroupName]="$index">
-                                <td class="p-2">{{ getItemName(po.items[$index].itemId) }}</td>
-                                <td class="p-2">{{ po.items[$index].quantity }}</td>
-                                <td class="p-2">{{ po.items[$index].receivedQuantity }}</td>
-                                <td class="p-2">
-                                    <input 
-                                        type="number" 
-                                        formControlName="quantityReceived" 
-                                        class="w-full bg-slate-100 dark:bg-secondary p-2 rounded"
-                                        [max]="po.items[$index].quantity - po.items[$index].receivedQuantity">
-                                </td>
+    <!-- Receive Items Modal -->
+    @if(poToReceive(); as po) {
+        <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-40">
+            <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <h3 class="text-xl font-bold mb-4">Receber Itens da OC: {{ po.poNumber }}</h3>
+                <form [formGroup]="receiveForm" (ngSubmit)="receiveItems()" class="flex-grow overflow-auto pr-2">
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr class="border-b dark:border-slate-600">
+                                <th class="p-2">Item</th>
+                                <th class="p-2">Pedido</th>
+                                <th class="p-2">Recebido</th>
+                                <th class="p-2">Recebendo Agora</th>
                             </tr>
-                       }
-                    </tbody>
-                </table>
-                 <div class="flex justify-end gap-4 mt-6 pt-4 border-t border-slate-200 dark:border-secondary">
-                    <button type="button" (click)="isReceiveModalOpen.set(false)" class="px-4 py-2 bg-slate-200 dark:bg-secondary rounded">Cancelar</button>
-                    <button type="submit" [disabled]="receiveForm.invalid || isLoading()" class="px-4 py-2 bg-success text-white rounded w-52 flex justify-center disabled:opacity-50">
-                        @if(isLoading()) { <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div> }
-                        @else { <span>Confirmar Recebimento</span> }
-                    </button>
-                </div>
-            </form>
+                        </thead>
+                        <tbody formArrayName="receivedItems">
+                            @for(itemControl of receiveItemsArray.controls; track $index) {
+                                <tr [formGroupName]="$index">
+                                    <td class="p-2">{{ getItemName(po.items[$index].itemId) }}</td>
+                                    <td class="p-2">{{ po.items[$index].quantity }}</td>
+                                    <td class="p-2">{{ po.items[$index].receivedQuantity }}</td>
+                                    <td class="p-2">
+                                        <input type="number" formControlName="quantityReceived" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <div class="flex justify-end gap-4 mt-6">
+                        <button type="button" (click)="poToReceive.set(null)" class="px-4 py-2 bg-slate-200 dark:bg-secondary rounded">Cancelar</button>
+                        <button type="submit" class="px-4 py-2 bg-success text-white rounded">Confirmar Recebimento</button>
+                    </div>
+                </form>
+            </div>
         </div>
-       </div>
     }
-
+    
     <!-- Delete Confirmation Modal -->
-    @if(poToDelete()) {
-       <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50">
+    @if (poToDelete()) {
+      <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50">
         <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-md">
           <h3 class="text-xl font-bold mb-4">Confirmar Exclusão</h3>
-          <p>Tem certeza que deseja excluir a Ordem de Compra "{{ poToDelete()?.poNumber }}"?</p>
+          <p>Tem certeza que deseja excluir a OC "{{ poToDelete()?.poNumber }}"?</p>
           <div class="flex justify-end gap-4 mt-6">
             <button (click)="poToDelete.set(null)" class="px-4 py-2 bg-slate-200 dark:bg-secondary rounded">Cancelar</button>
             <button (click)="deletePO()" class="px-4 py-2 bg-error text-white rounded">Excluir</button>
@@ -218,241 +231,195 @@ export class PurchaseOrdersComponent {
   private dbService = inject(DatabaseService);
   private toastService = inject(ToastService);
   private fb = inject(FormBuilder);
+  private authService = inject(AuthService);
   db = this.dbService.db;
-  
+
   PurchaseOrderStatus = PurchaseOrderStatus;
 
   isFormOpen = signal(false);
-  isReceiveModalOpen = signal(false);
-  isLoading = signal(false);
-  currentPO = signal<PurchaseOrder | null>(null);
+  poToEdit = signal<PurchaseOrder | null>(null);
   poToDelete = signal<PurchaseOrder | null>(null);
-  
-  poForm!: FormGroup;
+  poToReceive = signal<PurchaseOrder | null>(null);
+  form!: FormGroup;
   receiveForm!: FormGroup;
-
-  purchaseOrders = computed(() => 
-    this.db().purchaseOrders.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  );
   
-  get poItemsArray() { return this.poForm.get('items') as FormArray; }
+  purchaseOrders = computed(() => this.db().purchaseOrders.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+  availableItems = computed(() => this.dbService.itemsWithAvailableStock());
+  
+  get itemsArray() { return this.form.get('items') as FormArray; }
   get receiveItemsArray() { return this.receiveForm.get('receivedItems') as FormArray; }
 
-  getSupplierName(id: string) { return this.db().suppliers.find(s => s.id === id)?.name || 'N/A'; }
-  getItemName(id: string) { return this.db().items.find(i => i.id === id)?.name || 'Desconhecido'; }
-
-  poTotalValue(po: PurchaseOrder): number {
-    return po.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-  }
-
-  poTotalQuantity(po: PurchaseOrder): number {
+  poTotalQuantity(po: PurchaseOrder) {
     return po.items.reduce((sum, item) => sum + item.quantity, 0);
   }
 
-  statusColor(status: PurchaseOrderStatus): string {
+  getSupplierName(id: string) {
+    return this.db().suppliers.find(s => s.id === id)?.name || 'Desconhecido';
+  }
+  
+  getItemName(id: string) {
+    return this.availableItems().find(i => i.id === id)?.name || 'Desconhecido';
+  }
+  
+  statusColor(status: PurchaseOrderStatus) {
     switch (status) {
       case PurchaseOrderStatus.Rascunho: return 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200';
       case PurchaseOrderStatus.Enviado: return 'bg-blue-200 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case PurchaseOrderStatus.RecebidoParcialmente: return 'bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
       case PurchaseOrderStatus.Recebido: return 'bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case PurchaseOrderStatus.RecebidoParcialmente: return 'bg-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       case PurchaseOrderStatus.Cancelado: return 'bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-200';
-      default: return 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200';
+      default: return '';
     }
   }
 
   openForm(po: PurchaseOrder | null = null) {
-    this.currentPO.set(po);
-    const poItems = po?.items || [];
-    this.poForm = this.fb.group({
-      supplierId: [po?.supplierId || null, Validators.required],
-      poNumber: [po?.poNumber || `PO-${new Date().getFullYear()}-${(this.db().purchaseOrders.length + 1).toString().padStart(3, '0')}`, Validators.required],
-      status: [po?.status || PurchaseOrderStatus.Rascunho],
+    this.poToEdit.set(po);
+    const itemControls = po?.items.map(i => {
+      const itemName = this.getItemName(i.itemId);
+      return this.createItemGroup(itemName, i.quantity, i.unitPrice);
+    }) || [];
+
+    this.form = this.fb.group({
+      supplierId: [po?.supplierId || this.db().suppliers[0]?.id, Validators.required],
       notes: [po?.notes || ''],
-      items: this.fb.array(
-        poItems.map(item => this.createPoItemGroup(item.itemId, item.quantity, item.unitPrice)),
-        Validators.minLength(1)
-      )
+      items: this.fb.array(itemControls, Validators.minLength(1))
     });
-     if (!po) {
-        this.addPoItem();
+    if (!po) {
+      this.addItem();
     }
     this.isFormOpen.set(true);
   }
 
-  createPoItemGroup(itemId: string | null, quantity: number, unitPrice: number): FormGroup {
+  createItemGroup(itemName: string | null, quantity: number | null, unitPrice: number | null): FormGroup {
     return this.fb.group({
-      itemId: [itemId, Validators.required],
+      itemName: [itemName, Validators.required],
       quantity: [quantity, [Validators.required, Validators.min(1)]],
       unitPrice: [unitPrice, [Validators.required, Validators.min(0)]]
     });
   }
 
-  addPoItem() {
-    this.poItemsArray.push(this.createPoItemGroup(null, 1, 0));
-  }
-
-  removePoItem(index: number) {
-    this.poItemsArray.removeAt(index);
-  }
-
-  async savePO() {
-    if (this.poForm.invalid) {
-      this.toastService.addToast('Formulário inválido. Verifique o fornecedor, número e itens.', 'error');
+  addItem() { this.itemsArray.push(this.createItemGroup(null, 1, 0)); }
+  removeItem(index: number) { this.itemsArray.removeAt(index); }
+  
+  async save() {
+    if (this.form.invalid) {
+      this.toastService.addToast('Formulário inválido.', 'error');
       return;
     }
-    const formValue = this.poForm.value;
-    const current = this.currentPO();
+    const formValue = this.form.value;
+    const current = this.poToEdit();
     
-    const itemsWithReceivedQty = formValue.items.map((item: any, index: number) => ({
-      ...item,
-      receivedQuantity: current?.items[index]?.receivedQuantity || 0
-    }));
+    const items: PurchaseOrderItem[] = [];
+    for (const formItem of formValue.items) {
+        const item = this.availableItems().find(i => i.name === formItem.itemName);
+        if (!item) {
+            this.toastService.addToast(`Item "${formItem.itemName}" não encontrado.`, 'error');
+            return;
+        }
+        const existingItem = current?.items.find(i => i.itemId === item.id);
+        items.push({
+            itemId: item.id,
+            quantity: formItem.quantity,
+            unitPrice: formItem.unitPrice,
+            receivedQuantity: existingItem?.receivedQuantity || 0
+        });
+    }
 
-    const poData = { ...current, ...formValue, items: itemsWithReceivedQty };
-
+    const data = { 
+      ...current, ...formValue, items,
+      poNumber: current?.poNumber || `PO-${new Date().getFullYear()}-${(this.purchaseOrders().length + 1).toString().padStart(3, '0')}`,
+      status: current?.status || PurchaseOrderStatus.Rascunho,
+      createdAt: current?.createdAt || new Date().toISOString()
+    };
+    
     if (current?.id) {
-      await this.dbService.updateItem('purchaseOrders', poData as PurchaseOrder);
-      this.toastService.addToast('Ordem de Compra atualizada!', 'success');
+      await this.dbService.updateItem('purchaseOrders', data as PurchaseOrder);
+      this.toastService.addToast('Ordem de compra atualizada!', 'success');
     } else {
-      await this.dbService.addItem('purchaseOrders', poData);
-      this.toastService.addToast('Rascunho da Ordem de Compra salvo!', 'success');
+      // FIX: Explicitly type the return of addItem to ensure newPO has all properties of PurchaseOrder.
+      const newPO = await this.dbService.addItem<PurchaseOrder>('purchaseOrders', data);
+      this.toastService.addToast('Rascunho da ordem de compra salvo!', 'success');
+      await this.dbService.logAction('SAVE_PO_DRAFT', `Rascunho da OC '${newPO.poNumber}' para '${this.getSupplierName(newPO.supplierId)}' foi salvo.`);
     }
     this.isFormOpen.set(false);
   }
 
   async sendPO(po: PurchaseOrder) {
-    if (po.status !== PurchaseOrderStatus.Rascunho) return;
     const updatedPO = { ...po, status: PurchaseOrderStatus.Enviado };
     await this.dbService.updateItem('purchaseOrders', updatedPO);
-    this.toastService.addToast('Ordem de Compra enviada!', 'success');
+    await this.dbService.logAction('SEND_PO', `Ordem de Compra '${po.poNumber}' enviada para '${this.getSupplierName(po.supplierId)}'.`);
+    this.toastService.addToast(`OC ${po.poNumber} enviada!`, 'success');
     this.generatePdf(updatedPO);
   }
 
-  generatePdf(po: PurchaseOrder) {
-    const supplier = this.db().suppliers.find(s => s.id === po.supplierId);
-    if (!supplier) {
-        this.toastService.addToast('Fornecedor não encontrado para gerar PDF.', 'error');
-        return;
-    }
-
-    // FIX: Standardize jsPDF instantiation for consistency.
-    const doc = new jspdf.jsPDF();
-    
-    // Header
-    doc.setFontSize(22);
-    doc.text('Ordem de Compra', 105, 20, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text(`Número: ${po.poNumber}`, 15, 35);
-    doc.text(`Data: ${new Date(po.createdAt).toLocaleDateString('pt-BR')}`, 15, 42);
-
-    // Supplier Info
-    doc.setFontSize(14);
-    doc.text('Fornecedor', 15, 60);
-    doc.setFontSize(10);
-    doc.text(supplier.name, 15, 67);
-    doc.text(`CNPJ: ${supplier.cnpj}`, 15, 72);
-    doc.text(`Contato: ${supplier.contact}`, 15, 77);
-    
-    // Items Table
-    const tableColumn = ["Item", "Qtd.", "Preço Unit.", "Subtotal"];
-    const tableRows: any[][] = [];
-    let total = 0;
-
-    po.items.forEach((item: PurchaseOrderItem) => {
-      const dbItem = this.db().items.find(i => i.id === item.itemId);
-      const subtotal = item.quantity * item.unitPrice;
-      total += subtotal;
-      const itemRow = [
-        dbItem?.name || 'Item desconhecido',
-        item.quantity,
-        item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-        subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-      ];
-      tableRows.push(itemRow);
-    });
-
-    (doc as any).autoTable({
-        head: [tableColumn],
-        body: tableRows,
-        startY: 90,
-        theme: 'striped',
-        headStyles: { fillColor: [30, 41, 59] } // slate-800
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY;
-
-    // Total
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total: ${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 195, finalY + 15, { align: 'right' });
-
-    // Notes
-    if(po.notes) {
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Notas:', 15, finalY + 30);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        doc.text(po.notes, 15, finalY + 37, { maxWidth: 180 });
-    }
-
-    doc.save(`OC_${po.poNumber}.pdf`);
-  }
-  
   openReceiveModal(po: PurchaseOrder) {
-    this.currentPO.set(po);
-    const itemsToReceive = po.items.map(item => {
-      const remaining = item.quantity - item.receivedQuantity;
-      return this.fb.group({
-        quantityReceived: [remaining, [Validators.required, Validators.min(0), Validators.max(remaining)]]
-      });
-    });
+    this.poToReceive.set(po);
+    const controls = po.items.map(item => this.fb.group({
+      quantityReceived: [0, [Validators.required, Validators.min(0), Validators.max(item.quantity - item.receivedQuantity)]]
+    }));
     this.receiveForm = this.fb.group({
-      receivedItems: this.fb.array(itemsToReceive)
+      receivedItems: this.fb.array(controls)
     });
-    this.isReceiveModalOpen.set(true);
   }
 
-  async confirmReception() {
-    if (this.receiveForm.invalid) {
-      this.toastService.addToast('Verifique as quantidades recebidas.', 'error');
-      return;
-    }
-    const po = this.currentPO();
+  async receiveItems() {
+    const po = this.poToReceive();
     if (!po) return;
-
-    this.isLoading.set(true);
     try {
-      const receivedItems = this.receiveForm.value.receivedItems.map((val: any, index: number) => ({
-        itemId: po.items[index].itemId,
-        quantityReceived: Number(val.quantityReceived)
-      }));
-
-      await this.dbService.receivePurchaseOrderItems(po.id, receivedItems);
-      this.isReceiveModalOpen.set(false);
-      this.currentPO.set(null);
+      await this.dbService.receivePurchaseOrderItems(po.id, this.receiveForm.value.receivedItems);
+      this.poToReceive.set(null);
     } catch(e: any) {
       this.toastService.addToast(e.message, 'error');
-    } finally {
-      this.isLoading.set(false);
     }
   }
 
-  openDeleteConfirm(po: PurchaseOrder) {
-    this.poToDelete.set(po);
-  }
+  openDeleteConfirm(po: PurchaseOrder) { this.poToDelete.set(po); }
   
   async deletePO() {
     const po = this.poToDelete();
     if (po) {
-      if (po.status !== PurchaseOrderStatus.Rascunho) {
-        this.toastService.addToast('Apenas Ordens de Compra em rascunho podem ser excluídas.', 'error');
-        this.poToDelete.set(null);
-        return;
-      }
       await this.dbService.deleteItem('purchaseOrders', po.id);
-      this.toastService.addToast('Ordem de Compra excluída!', 'success');
+      await this.dbService.logAction('DELETE_PO', `Ordem de Compra '${po.poNumber}' foi excluída.`);
+      this.toastService.addToast('Ordem de compra excluída!', 'success');
       this.poToDelete.set(null);
     }
+  }
+  
+  generatePdf(po: PurchaseOrder) {
+    const doc = new (jspdf as any).jsPDF();
+    const supplier = this.db().suppliers.find(s => s.id === po.supplierId);
+
+    doc.setFontSize(22);
+    doc.text('Ordem de Compra', 105, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text(`Número da OC: ${po.poNumber}`, 14, 30);
+    doc.text(`Data: ${new Date(po.createdAt).toLocaleDateString('pt-BR')}`, 14, 36);
+
+    doc.setFontSize(14);
+    doc.text('Fornecedor:', 14, 50);
+    doc.setFontSize(10);
+    doc.text(supplier?.name || '', 14, 56);
+    doc.text(supplier?.cnpj || '', 14, 61);
+    doc.text(supplier?.address || '', 14, 66);
+    doc.text(supplier?.contact || '', 14, 71);
+    
+    const tableData = po.items.map(item => [
+      this.getItemName(item.itemId),
+      item.quantity,
+      item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+      (item.quantity * item.unitPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    ]);
+    
+    const total = po.items.reduce((sum, i) => sum + (i.quantity * i.unitPrice), 0);
+    
+    (doc as any).autoTable({
+      startY: 80,
+      head: [['Item', 'Quantidade', 'Preço Unit.', 'Subtotal']],
+      body: tableData,
+      foot: [['Total', '', '', total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })]],
+      footStyles: { fontStyle: 'bold' }
+    });
+    
+    doc.save(`OC_${po.poNumber}.pdf`);
   }
 }

@@ -9,7 +9,6 @@ import { ToastService } from '../services/toast.service';
   template: `
     <div class="fixed top-5 right-5 z-50 space-y-2">
       @for(toast of toastService.toasts(); track toast.id) {
-        <!-- FIX: Replaced ngClass with individual class bindings to follow best practices. -->
         <div 
           class="flex items-center justify-between p-4 rounded-lg shadow-lg max-w-sm text-white"
           [class.bg-green-500]="toast.type === 'success'"

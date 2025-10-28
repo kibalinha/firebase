@@ -1,9 +1,12 @@
-import { Component, ChangeDetectionStrategy, inject, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators, FormArray } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, Validators, FormArray, FormControl } from '@angular/forms';
 import { DatabaseService } from '../services/database.service';
 import { ToastService } from '../services/toast.service';
 import { User, UserRole, Permission, ALL_PERMISSIONS } from '../models';
+import { AuthService } from '../services/auth.service';
+
+type UIRole = 'Administrador' | 'Gerente' | 'Operador' | 'Visualizador' | 'Personalizado';
 
 @Component({
   selector: 'app-users',
@@ -28,7 +31,10 @@ import { User, UserRole, Permission, ALL_PERMISSIONS } from '../models';
               <div class="bg-white dark:bg-primary p-4 rounded-lg shadow-md flex flex-col">
                 <div class="flex-grow">
                   <div class="flex justify-between items-start">
-                    <h3 class="font-bold text-lg mb-2">{{ user.username }}</h3>
+                    <div>
+                      <h3 class="font-bold text-lg">{{ user.name }}</h3>
+                      <p class="text-sm text-slate-500 dark:text-slate-400">{{ user.username }}</p>
+                    </div>
                     <div class="flex items-center space-x-2">
                        <button (click)="openForm(user)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar">✏️</button>
                        @if (user.id !== 'user-admin-default') {
@@ -36,10 +42,12 @@ import { User, UserRole, Permission, ALL_PERMISSIONS } from '../models';
                        }
                     </div>
                   </div>
-                  <span class="px-2 py-1 rounded-full text-xs font-semibold"
+                  <span class="mt-2 px-2 py-1 rounded-full text-xs font-semibold self-start"
                     [class.bg-accent/20]="user.role === UserRole.Admin" [class.text-accent]="user.role === UserRole.Admin"
-                    [class.bg-slate-200]="user.role !== UserRole.Admin" [class.text-slate-800]="user.role !== UserRole.Admin"
-                    [class.dark:text-slate-200]="user.role !== UserRole.Admin"
+                    [class.bg-sky-100]="user.role === UserRole.User" [class.text-sky-800]="user.role === UserRole.User"
+                    [class.dark:bg-sky-900]="user.role === UserRole.User" [class.dark:text-sky-200]="user.role === UserRole.User"
+                    [class.bg-slate-200]="user.role === UserRole.Viewer" [class.text-slate-800]="user.role === UserRole.Viewer"
+                    [class.dark:text-slate-200]="user.role === UserRole.Viewer"
                   >{{ user.role }}</span>
                 </div>
               </div>
@@ -51,40 +59,53 @@ import { User, UserRole, Permission, ALL_PERMISSIONS } from '../models';
     <!-- Form Modal -->
     @if (isFormOpen()) {
       <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-40">
-        <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
           <h3 class="text-xl font-bold mb-4">{{ currentUser()?.id ? 'Editar' : 'Novo' }} Usuário</h3>
           <form [formGroup]="userForm" (ngSubmit)="saveUser()" class="flex-grow overflow-y-auto pr-2">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm mb-1">Nome de Usuário</label>
+                <label class="block text-sm mb-1">Nome Completo</label>
+                <input type="text" formControlName="name" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
+              </div>
+              <div>
+                <label class="block text-sm mb-1">Nome de Usuário (para login)</label>
                 <input type="text" formControlName="username" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
               </div>
               <div>
                 <label class="block text-sm mb-1">Senha</label>
                 <input type="password" formControlName="password" [placeholder]="currentUser()?.id ? 'Deixe em branco para não alterar' : ''" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
               </div>
-              <div class="md:col-span-2">
-                <label class="block text-sm mb-1">Função</label>
-                <select formControlName="role" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
-                  @for (role of userRoles; track role) {
+              <div>
+                <label class="block text-sm mb-1">Perfil de Permissões</label>
+                <select [formControl]="uiRoleControl" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
+                  @for (role of uiRoles; track role) {
                     <option [value]="role">{{ role }}</option>
                   }
                 </select>
               </div>
             </div>
             
-            <h4 class="text-lg font-semibold mt-6 mb-2">Permissões</h4>
-            @if (userForm.get('role')?.value === UserRole.Admin) {
+            <h4 class="text-lg font-semibold mt-6 mb-2">Permissões Detalhadas</h4>
+            @if (uiRoleControl.value === 'Administrador') {
               <div class="p-4 bg-sky-100 dark:bg-sky-900/50 rounded-md text-sky-800 dark:text-sky-200 text-sm">
-                Administradores têm acesso a todas as funcionalidades.
+                Administradores têm acesso irrestrito a todas as funcionalidades.
               </div>
             } @else {
-              <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm" formArrayName="permissions">
-                @for(permission of permissions.controls; track $index) {
-                  <label class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-secondary rounded-md">
-                    <input type="checkbox" [formControlName]="$index" class="h-4 w-4 rounded text-accent focus:ring-accent">
-                    <span>{{ allPermissions[$index].label }}</span>
-                  </label>
+              <div class="space-y-2" formArrayName="permissions">
+                @for(group of permissionGroups(); track group[0]) {
+                  <details class="p-2 rounded-lg bg-slate-50 dark:bg-secondary/50 border border-slate-200 dark:border-secondary" open>
+                    <summary class="font-semibold cursor-pointer text-slate-800 dark:text-slate-100">{{ group[0] }}</summary>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 pt-2 pl-4">
+                        @for(permission of group[1]; track permission.id) {
+                            @if(getPermissionControl(permission.id); as control) {
+                                 <label class="flex items-center gap-2 p-1">
+                                    <input type="checkbox" [formControl]="control" class="h-4 w-4 rounded text-accent focus:ring-accent disabled:opacity-50">
+                                    <span class="text-sm">{{ permission.label }}</span>
+                                </label>
+                            }
+                        }
+                    </div>
+                  </details>
                 }
               </div>
             }
@@ -116,48 +137,89 @@ import { User, UserRole, Permission, ALL_PERMISSIONS } from '../models';
 export class UsersComponent {
   private dbService = inject(DatabaseService);
   private toastService = inject(ToastService);
-  private fb = inject(FormBuilder);
+  private fb: FormBuilder = inject(FormBuilder);
+  private authService = inject(AuthService);
   db = this.dbService.db;
 
   UserRole = UserRole;
-  userRoles = Object.values(UserRole);
+  uiRoles: UIRole[] = ['Administrador', 'Gerente', 'Operador', 'Visualizador', 'Personalizado'];
   allPermissions = ALL_PERMISSIONS;
 
   isFormOpen = signal(false);
   currentUser = signal<User | null>(null);
   userToDelete = signal<User | null>(null);
   userForm!: FormGroup;
+  uiRoleControl = new FormControl<UIRole>('Personalizado', { nonNullable: true });
+
+  permissionGroups = computed(() => {
+    const groups = this.allPermissions.reduce((acc, p) => {
+        (acc[p.group] = acc[p.group] || []).push(p);
+        return acc;
+    }, {} as Record<string, typeof ALL_PERMISSIONS>);
+    return Object.entries(groups);
+  });
+
+  roleTemplates: Record<UIRole, Permission[]> = {
+    Administrador: [],
+    Visualizador: ['dashboard', 'inventory', 'red_shelf', 'reports', 'audit_log', 'item_lifecycle'],
+    Operador: ['dashboard', 'inventory', 'red_shelf', 'entry', 'exit', 'picking_lists', 'cycle_count', 'stocktake', 'kiosk', 'kits', 'reservations', 'item_lifecycle'],
+    Gerente: ['dashboard', 'inventory', 'red_shelf', 'entry', 'exit', 'picking_lists', 'cycle_count', 'stocktake', 'kiosk', 'kits', 'reservations', 'purchase_orders', 'purchase_suggestion', 'suppliers', 'reports', 'anomaly_detection', 'demand_estimation', 'technicians', 'audit_log', 'item_lifecycle'],
+    Personalizado: []
+  };
+
+  constructor() {
+    this.uiRoleControl.valueChanges.subscribe(uiRole => this.applyRoleTemplate(uiRole));
+  }
 
   get permissions(): FormArray {
     return this.userForm.get('permissions') as FormArray;
   }
 
+  getPermissionControl(permissionId: Permission): FormControl | null {
+    const index = this.allPermissions.findIndex(p => p.id === permissionId);
+    if (index === -1) return null;
+    return this.permissions.at(index) as FormControl;
+  }
+
   openForm(user: User | null = null) {
     this.currentUser.set(user);
+    
+    let uiRole: UIRole = 'Personalizado';
+    if (user) {
+        if (user.role === UserRole.Admin) uiRole = 'Administrador';
+        else if (user.role === UserRole.Viewer) uiRole = 'Visualizador';
+    }
+    this.uiRoleControl.setValue(uiRole, { emitEvent: false });
+
     this.userForm = this.fb.group({
+      name: [user?.name || '', Validators.required],
       username: [user?.username || '', Validators.required],
-      password: ['', user ? [] : [Validators.required, Validators.minLength(6)]],
-      role: [user?.role || UserRole.User, Validators.required],
+      password: ['', user?.id ? [Validators.minLength(6)] : [Validators.required, Validators.minLength(6)]],
       permissions: this.fb.array(this.allPermissions.map(p => 
-        user?.permissions.includes(p.id) || false
+        (user?.role === UserRole.Admin) || (user?.permissions.includes(p.id)) || false
       ))
     });
 
-    // Disable permissions if role is admin
-    this.userForm.get('role')?.valueChanges.subscribe(role => {
-      const permissionsArray = this.userForm.get('permissions');
-      if (role === UserRole.Admin) {
-        permissionsArray?.disable();
-      } else {
-        permissionsArray?.enable();
-      }
-    });
-
-    if (user?.role === UserRole.Admin) {
-      this.userForm.get('permissions')?.disable();
-    }
-
+    this.applyRoleTemplate(uiRole);
     this.isFormOpen.set(true);
+  }
+
+  applyRoleTemplate(uiRole: UIRole) {
+    if (!this.userForm) return;
+    const permissionsArray = this.permissions;
+    const isReadOnly = uiRole === 'Administrador' || uiRole === 'Gerente' || uiRole === 'Operador' || uiRole === 'Visualizador';
+    
+    if (isReadOnly) {
+      permissionsArray.disable();
+    } else {
+      permissionsArray.enable();
+    }
+    
+    const template = this.roleTemplates[uiRole];
+    const newPermissionsValue = this.allPermissions.map(p => 
+        uiRole === 'Administrador' || template.includes(p.id)
+    );
+    permissionsArray.setValue(newPermissionsValue);
   }
 
   openDeleteConfirm(user: User) {
@@ -167,29 +229,40 @@ export class UsersComponent {
   async saveUser() {
     if (this.userForm.invalid) return;
 
-    const formValue = this.userForm.value;
+    const formValue = this.userForm.getRawValue(); // Use getRawValue to get disabled control values
     const current = this.currentUser();
+    const uiRole = this.uiRoleControl.value;
 
-    const selectedPermissions = this.allPermissions
-      .filter((p, i) => formValue.permissions[i])
-      .map(p => p.id);
+    let dbRole: UserRole;
+    switch(uiRole) {
+        case 'Administrador': dbRole = UserRole.Admin; break;
+        case 'Visualizador': dbRole = UserRole.Viewer; break;
+        default: dbRole = UserRole.User; break;
+    }
     
+    const selectedPermissions = dbRole === UserRole.User 
+        ? this.allPermissions.filter((p, i) => formValue.permissions[i]).map(p => p.id)
+        : this.roleTemplates[uiRole];
+
     const userData = {
       ...current,
+      name: formValue.name,
       username: formValue.username,
-      role: formValue.role,
-      permissions: formValue.role === UserRole.Admin ? [] : selectedPermissions,
+      role: dbRole,
+      permissions: dbRole === UserRole.Admin ? [] : selectedPermissions,
       passwordHash: formValue.password ? btoa(formValue.password) : current?.passwordHash
     };
 
     if (current?.id) {
       await this.dbService.updateItem('users', userData as User);
-      this.toastService.addToast(`Usuário "${userData.username}" atualizado.`, 'success');
+      await this.dbService.logAction('UPDATE_USER', `Usuário '${userData.name}' (${userData.username}) atualizado. Perfil: '${dbRole}'.`);
+      this.toastService.addToast(`Usuário "${userData.name}" atualizado.`, 'success');
     } else {
-      await this.dbService.addItem('users', userData);
-      this.toastService.addToast(`Usuário "${userData.username}" criado.`, 'success');
+      // FIX: Explicitly type the return of addItem to ensure newUser has all properties of User.
+      const newUser = await this.dbService.addItem<User>('users', userData);
+      await this.dbService.logAction('CREATE_USER', `Usuário '${newUser.name}' (${newUser.username}) criado com o perfil '${dbRole}'.`);
+      this.toastService.addToast(`Usuário "${userData.name}" criado.`, 'success');
     }
-
     this.isFormOpen.set(false);
   }
 
@@ -197,6 +270,7 @@ export class UsersComponent {
     const user = this.userToDelete();
     if (user && user.id !== 'user-admin-default') {
       await this.dbService.deleteItem('users', user.id);
+      await this.dbService.logAction('DELETE_USER', `Usuário '${user.name}' (${user.username}, ID: ${user.id}) excluído.`);
       this.toastService.addToast(`Usuário "${user.username}" excluído.`, 'success');
     }
     this.userToDelete.set(null);

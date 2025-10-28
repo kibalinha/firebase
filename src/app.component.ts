@@ -29,7 +29,8 @@ import { AuthService } from './services/auth.service';
   }
 })
 export class AppComponent implements OnInit {
-  private router = inject(Router);
+  // FIX: Explicitly type the router property to assist TypeScript's type inference.
+  private router: Router = inject(Router);
   private geminiService = inject(GeminiService);
   private authService = inject(AuthService);
 
@@ -53,7 +54,7 @@ export class AppComponent implements OnInit {
     settings: 'Configurações',
     demand_estimation: 'Estimar Demanda',
     kiosk: 'Modo Kiosk',
-    smart_alerts: 'Alertas Inteligentes',
+    anomaly_detection: 'Detecção de Anomalias',
     cycle_count: 'Contagem Cíclica',
     item_lifecycle: 'Ciclo de Vida do Item',
     purchase_orders: 'Ordens de Compra',

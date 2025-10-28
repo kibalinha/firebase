@@ -5,7 +5,8 @@ import { ToastService } from '../services/toast.service';
 
 export const adminGuard: CanActivateFn = (route, state) => {
   const authService = inject(AuthService);
-  const router = inject(Router);
+  // FIX: Explicitly type the router constant to assist TypeScript's type inference.
+  const router: Router = inject(Router);
   const toastService = inject(ToastService);
 
   if (authService.isAdmin()) {

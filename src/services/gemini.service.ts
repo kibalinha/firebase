@@ -1,830 +1,393 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { GoogleGenAI, Type, GenerateContentResponse } from '@google/genai';
 import { ToastService } from './toast.service';
-// FIX: Added Technician to the import list
 import { AlmoxarifadoDB, SearchFilter, Supplier, Item, Movement, Forecast, Technician, AnomalyReport, ParsedInvoiceItem } from '../models';
-import { DatabaseService } from './database.service';
+import { GoogleGenAI, GenerateContentResponse, Type } from '@google/genai';
 
 @Injectable({ providedIn: 'root' })
 export class GeminiService {
-  private ai = signal<GoogleGenAI | null>(null);
   private toastService = inject(ToastService);
-  private dbService = inject(DatabaseService);
-
-  // FIX: Replaced incorrect '->' with '.' for property access.
-  isConfigured = computed(() => this.ai() !== null);
+  private ai = signal<GoogleGenAI | null>(null);
+  
+  apiKeySignal = signal<string | null>(localStorage.getItem('gemini_api_key'));
+  isConfigured = computed(() => !!this.apiKeySignal());
 
   constructor() {
-    this._initializeAi();
-  }
-
-  private _initializeAi(): void {
-    if (process.env.API_KEY) {
-      try {
-        this.ai.set(new GoogleGenAI({ apiKey: process.env.API_KEY }));
-      } catch (error) {
-        console.error('Erro ao inicializar o GoogleGenAI:', error);
-        this.ai.set(null);
-      }
-    } else {
-      console.error('Variável de ambiente API_KEY não definida. O serviço Gemini será desativado.');
-      this.ai.set(null);
+    const key = this.apiKeySignal();
+    if (key) {
+      this.initializeAi(key);
     }
   }
 
-  public async validateKeyOnLoad(): Promise<void> {
-    if (this.isConfigured()) {
-        const isValid = await this.validateApiKey();
-        if (!isValid) {
-            this.toastService.addToast('A chave de API configurada na aplicação é inválida.', 'error');
-            this.ai.set(null);
-        }
-    }
-  }
-
-  private async validateApiKey(): Promise<boolean> {
-    const aiInstance = this.ai();
-    if (!aiInstance) return false;
+  private initializeAi(apiKey: string) {
     try {
-        // A very simple, fast, and cheap API call to test authentication.
-        const result = await aiInstance.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: 'test',
-        });
-        
-        // A real response to a simple prompt will always have text content.
-        // This helps catch mocked or silently failing responses.
-        if (result && result.text && result.text.trim() !== '') {
-            return true;
-        }
-        
-        console.error('API Key validation failed: The API returned an empty response.');
-        return false;
-    } catch (error) {
-        console.error('API Key validation failed:', error);
-        return false;
+      const aiInstance = new GoogleGenAI({ apiKey });
+      this.ai.set(aiInstance);
+      this.apiKeySignal.set(apiKey);
+      localStorage.setItem('gemini_api_key', apiKey);
+    } catch (e: any) {
+      this.toastService.addToast(`Erro ao inicializar IA: ${e.message}`, 'error');
+      this.clearApiKey();
     }
   }
 
-  private async generateContent(prompt: string, model: string = 'gemini-2.5-flash'): Promise<string> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-      this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-      throw new Error('Gemini API not configured');
+  public setApiKey(apiKey: string) {
+    if (!apiKey.trim()) {
+      this.clearApiKey();
+      return;
     }
-    try {
-      const response: GenerateContentResponse = await aiInstance.models.generateContent({
-        model,
-        contents: prompt,
-      });
-      return response.text;
-    } catch (error) {
-      console.error('Error generating content with Gemini:', error);
-      this.toastService.addToast('Erro na comunicação com o serviço de IA.', 'error');
-      throw error;
-    }
+    this.initializeAi(apiKey);
+    this.validateKeyOnLoad();
   }
 
-  async generateChatResponse(params: { contents: any[], tools?: any[] }): Promise<GenerateContentResponse> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-      this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-      throw new Error('Gemini API not configured');
-    }
-    try {
-      const response: GenerateContentResponse = await aiInstance.models.generateContent({
-        model: 'gemini-2.5-flash',
-        ...params,
-      });
-      return response;
-    } catch (error) {
-      console.error('Error generating chat response with Gemini:', error);
-      this.toastService.addToast('Erro na comunicação com o assistente de IA.', 'error');
-      throw error;
-    }
+  public clearApiKey() {
+    localStorage.removeItem('gemini_api_key');
+    this.ai.set(null);
+    this.apiKeySignal.set(null);
+  }
+
+  private handleApiError(error: any): never {
+    console.error("Gemini API Error:", error);
+    const message = error.message || 'Um erro desconhecido ocorreu com a API de IA.';
+    this.toastService.addToast(message, 'error');
+    throw new Error(message);
   }
   
+  public async validateKeyOnLoad(): Promise<void> {
+    if (!this.isConfigured() || !this.ai()) return;
+    try {
+      await this.ai()!.models.generateContent({ model: 'gemini-2.5-flash', contents: 'Olá', config: {maxOutputTokens: 2} });
+      this.toastService.addToast('Chave de API do Gemini validada com sucesso!', 'success');
+    } catch (error: any) {
+      console.error('Gemini API Key validation failed:', error);
+      this.toastService.addToast('Chave de API do Gemini inválida ou com problemas.', 'error');
+      this.clearApiKey();
+    }
+  }
+
   async generateDescription(itemName: string): Promise<string> {
-    const prompt = `Gere uma descrição curta e concisa para um item de almoxarifado chamado "${itemName}". A descrição deve ter no máximo 150 caracteres.`;
-    return this.generateContent(prompt);
+    if (!this.isConfigured()) this.handleApiError(new Error('Chave de API não configurada.'));
+    try {
+      const prompt = `Crie uma descrição técnica e concisa para o item de almoxarifado: "${itemName}". Máximo 150 caracteres.`;
+      const response = await this.ai()!.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+      return response.text.trim();
+    } catch (error) { this.handleApiError(error); }
   }
 
   async suggestCategory(itemName: string, existingCategories: string[]): Promise<string> {
-    const prompt = `Dado o item de almoxarifado "${itemName}" e a lista de categorias existentes [${existingCategories.join(', ')}], qual é a categoria mais apropriada? Responda apenas com o nome da categoria. Se nenhuma for apropriada, sugira uma nova categoria adequada.`;
-    const suggestion = await this.generateContent(prompt);
-    return suggestion.trim();
-  }
-
-  async parseSearchQuery(query: string, suppliers: Supplier[]): Promise<SearchFilter[] | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-      this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-      return null;
-    }
-    
-    const suppliersForPrompt = suppliers.map(s => `id: ${s.id}, nome: ${s.name}`).join('; ');
-
-    const schema = {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-            name: { type: Type.STRING, description: 'Parte do nome do item para buscar.' },
-            category: { type: Type.STRING, description: 'A categoria exata para filtrar.' },
-            supplierId: { type: Type.STRING, description: 'O ID exato do fornecedor para filtrar.' },
-            minQuantity: { type: Type.INTEGER, description: 'A quantidade mínima de estoque.' },
-            maxQuantity: { type: Type.INTEGER, description: 'A quantidade máxima de estoque.' },
-        },
-      }
-    };
-    
-    const prompt = `
-      Você é um assistente de busca para um sistema de inventário. Sua tarefa é converter uma consulta de busca em linguagem natural em um array de objetos de filtro JSON.
-      A consulta do usuário é: "${query}"
-
-      - Crie um array de objetos. Cada objeto no array representa um grupo de condições conectadas por 'OU'.
-      - Dentro de cada objeto, as propriedades são conectadas por 'E'.
-      - Exemplo 1: "parafusos de estoque baixo" -> [{ "name": "parafuso", "maxQuantity": 10 }]
-      - Exemplo 2: "parafusos OU martelos" -> [{ "name": "parafuso" }, { "name": "martelo" }]
-      - Exemplo 3: "itens de limpeza com menos de 20 unidades OU ferramentas do fornecedor ForneceTudo" -> [{ "category": "Limpeza", "maxQuantity": 20 }, { "category": "Ferramentas", "supplierId": "supplier-1" }]
-
-      Aqui está a lista de fornecedores disponíveis com seus IDs:
-      ${suppliersForPrompt}
-
-      Converta a consulta do usuário em um array de objetos JSON com base no schema fornecido.
-      - Se o usuário mencionar um fornecedor pelo nome, use o ID correspondente da lista.
-      - Para frases como "estoque baixo" ou "menos de 10", use o campo 'maxQuantity'. Para "estoque crítico", considere um valor baixo como 5.
-      - Para frases como "mais de 100", use o campo 'minQuantity'.
-      - Se um campo não for mencionado em um grupo de condições, omita-o do objeto JSON.
-      - Responda APENAS com o array JSON. Se a consulta for simples e não precisar de filtros (ex: "oi"), retorne um array vazio [].
-    `;
-
+    if (!this.isConfigured()) this.handleApiError(new Error('Chave de API não configurada.'));
     try {
-      const response: GenerateContentResponse = await aiInstance.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
-        }
+      const prompt = `Sugira a melhor categoria para o item "${itemName}". Se uma das categorias existentes for adequada, use-a. Caso contrário, sugira uma nova categoria apropriada. Categorias existentes: ${existingCategories.join(', ')}. Responda APENAS com o nome da categoria.`;
+      const response = await this.ai()!.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+      return response.text.trim().replace('.', '');
+    } catch (error) { this.handleApiError(error); }
+  }
+  
+  async parseSearchQuery(query: string, suppliers: Supplier[]): Promise<SearchFilter[] | null> {
+    if (!this.isConfigured()) return null;
+    const prompt = `Analise a consulta de busca: "${query}". Fornecedores: ${suppliers.map(s => `"${s.name}" (ID: ${s.id})`).join(', ')}. Extraia os filtros em JSON. Se ambíguo, retorne múltiplas interpretações.`;
+    try {
+      const response = await this.ai()!.models.generateContent({
+          model: 'gemini-2.5-flash', contents: prompt,
+          config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                  type: Type.ARRAY,
+                  items: {
+                      type: Type.OBJECT,
+                      properties: {
+                          name: { type: Type.STRING }, category: { type: Type.STRING }, supplierId: { type: Type.STRING },
+                          minQuantity: { type: Type.INTEGER }, maxQuantity: { type: Type.INTEGER }
+                      }
+                  }
+              }
+          }
       });
-      const jsonText = response.text.trim();
-      return JSON.parse(jsonText) as SearchFilter[];
+      return JSON.parse(response.text.trim());
     } catch (error) {
-      console.error('Error parsing search query with Gemini:', error);
-      this.toastService.addToast('Falha ao processar a busca com IA.', 'error');
+      console.error("Gemini parseSearchQuery Error:", error);
+      this.toastService.addToast('IA não conseguiu interpretar a busca.', 'info');
       return null;
     }
   }
 
   async getOptimizationSuggestions(dbState: AlmoxarifadoDB): Promise<string> {
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    
-    // 1. Filter movements to the last 90 days.
-    const recentMovements = dbState.movements.filter(m => new Date(m.date) >= ninetyDaysAgo);
-    
-    // 2. Filter items to only include those with stock. Items with 0 stock are not relevant for optimization.
-    const itemsWithStock = dbState.items.filter(i => i.quantity > 0);
-    
-    // 3. Extract relevant IDs from movements and items to reduce context size.
-    const relevantItemIds = new Set([
-        ...recentMovements.map(m => m.itemId),
-        ...itemsWithStock.map(i => i.id)
-    ]);
-    const relevantSupplierIds = new Set(itemsWithStock.map(i => i.preferredSupplierId).filter(Boolean));
+    if (!this.isConfigured()) this.handleApiError(new Error('Chave de API não configurada.'));
 
-    // 4. Create a compact, summarized state for the AI prompt.
-    const summarizedDbState = {
-        items: dbState.items.filter(i => relevantItemIds.has(i.id)),
-        suppliers: dbState.suppliers.filter(s => relevantSupplierIds.has(s.id)),
-        movements: recentMovements
-        // Technicians are not needed for this report, so we omit them.
+    // Prune the data to only what's necessary for the prompt to avoid token limits
+    const relevantData = {
+        items: dbState.items.map(({ id, name, quantity, reorderPoint, price, category }) => ({ id, name, quantity, reorderPoint, price, category })),
+        movements: dbState.movements
+            .filter(m => m.type === 'out') // Only 'out' movements are relevant for turnover
+            .map(({ itemId, quantity, date }) => ({ itemId, quantity, date }))
     };
 
     const prompt = `
-    Você é um consultor especialista em logística e gerenciamento de inventário. Sua tarefa é analisar os dados de um almoxarifado e fornecer um relatório de otimização.
-    **RESPONDA EM PORTUGUÊS E FORMATE A SAÍDA ESTRITAMENTE EM HTML.**
+      Analise os seguintes dados de inventário e gere um relatório de otimização em HTML.
+      Utilize as classes de CSS do Tailwind para estilização.
+      O relatório deve focar em:
+      1.  **Itens com Estoque Excessivo (Baixo Giro):** Itens com quantidade alta e poucas saídas recentes.
+      2.  **Pontos de Ressuprimento Inadequados:** Itens que ficam sem estoque frequentemente ou cujo ponto de ressuprimento é muito alto/baixo.
+      3.  **Sugestões Gerais de Otimização:** Outras oportunidades de melhoria.
 
-    Use as seguintes tags:
-    - \`<h3>\` para os títulos das seções.
-    - \`<p>\` para parágrafos de texto.
-    - \`<strong>\` para destacar termos importantes.
-    - \`<table>\`, \`<thead>\`, \`<tbody>\`, \`<tr>\`, \`<th>\`, \`<td>\` para todos os dados tabulares.
-    - \`<ul>\` e \`<li>\` para listas de sugestões.
-    - **NÃO** use \`<style>\`, \`<div>\`, \`<script>\` ou qualquer outra tag não listada.
+      **Estrutura HTML e Classes Tailwind:**
+      - Container principal: \`<div class="space-y-6">\`
+      - Títulos de seção: \`<h3 class="text-xl font-bold mb-3 text-slate-800 dark:text-slate-100">Título</h3>\`
+      - Parágrafos: \`<p class="mb-2 text-slate-600 dark:text-slate-300">Texto.</p>\`
+      - Tabelas: use a estrutura \`<table class="w-full text-left text-sm">...\` com \`<thead>\`, \`<tbody>\`, \`<th>\` e \`<td>\`.
+        - Header da tabela: \`<thead class="bg-slate-50 dark:bg-secondary"><tr class="border-b dark:border-slate-600">...\`
+        - Linhas da tabela: \`<tr class="border-b dark:border-slate-700">...\`
+        - Células de header e dados: \`<th class="p-3">...\` e \`<td class="p-3">...\`
+      - Para valores numéricos importantes, use \`<span class="font-bold">...\`. Para valores negativos ou de alerta, use \`<span class="font-bold text-error">...\`.
 
-    Baseado nos dados JSON a seguir (com movimentações dos últimos 90 dias), forneça insights sobre:
-    1.  **Resumo Executivo:** Um parágrafo resumindo a saúde geral do inventário.
-    2.  **Itens de Baixo Giro (Slow-Moving):** Uma tabela com itens que não tiveram saídas nos últimos 90 dias, mas que possuem estoque. Colunas: 'Item', 'Estoque Atual', 'Última Saída'.
-    3.  **Pontos de Ressuprimento (Reorder Points):** Uma tabela com itens cujo ponto de ressuprimento parece mal ajustado (muito alto ou baixo) em comparação com o consumo. Colunas: 'Item', 'Ponto Atual', 'Consumo (90 dias)', 'Sugestão'.
-    4.  **Oportunidades de Redução de Custo:** Uma tabela com os 5 itens de maior valor total em estoque (preço * quantidade). Colunas: 'Item', 'Valor em Estoque', 'Sugestão'.
-
-    Use os dados atuais como referência. A data de hoje é ${new Date().toLocaleDateString('pt-BR')}.
-
-    Dados do Almoxarifado (Apenas inventário principal):
-    ${JSON.stringify(summarizedDbState, null, 2)}
+      **Dados para Análise:** ${JSON.stringify(relevantData)}
     `;
-    return this.generateContent(prompt);
+    try {
+      const response = await this.ai()!.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+      return response.text;
+    } catch (error) { this.handleApiError(error); }
   }
 
   async generateMonthlyReportSummary(monthData: { movements: Movement[], items: Item[], technicians: Technician[] }, monthName: string): Promise<string> {
-    const relevantItemIds = new Set(monthData.movements.map(m => m.itemId));
-    const relevantTechnicianIds = new Set(monthData.movements.map(m => m.technicianId).filter((id): id is string => !!id));
-
-    const itemsForContext = monthData.items.filter(i => relevantItemIds.has(i.id));
-    const techniciansForContext = monthData.technicians.filter(t => relevantTechnicianIds.has(t.id));
-    
-    const summarizedMonthData = {
-      movements: monthData.movements,
-      items: itemsForContext,
-      technicians: techniciansForContext
-    };
-    
+    if (!this.isConfigured()) this.handleApiError(new Error('Chave de API não configurada.'));
     const prompt = `
-      Você é um analista de dados sênior e especialista em logística, preparando um dashboard executivo para o mês de ${monthName}.
-      **RESPONDA EM PORTUGUÊS E FORMATE A SAÍDA ESTRITAMENTE EM HTML.**
+      Crie um resumo executivo em HTML para o mês de ${monthName}, formatado com classes do Tailwind CSS.
+      O relatório deve conter:
+      1.  **KPIs Principais:** Cards com o total de saídas, valor total consumido, e técnico mais ativo.
+      2.  **Tabela de Itens Mais Consumidos:** Top 5 por valor.
+      3.  **Análise Geral:** Um parágrafo com insights sobre o desempenho do mês.
 
-      Use Tailwind CSS classes diretamente no HTML para estilização. A estrutura deve ser:
-      - Para a grade de KPIs, use \`<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">\`.
-      - Para cada card de KPI, use \`<div class="bg-slate-100 dark:bg-secondary p-4 rounded-lg shadow">\`.
-      - Dentro de um card, use \`<p class="text-sm text-slate-500 dark:text-slate-400 mb-1">\` para o título e \`<p class="text-2xl font-bold text-slate-800 dark:text-slate-100">\` para o valor.
-      - Para seções, use \`<div class="mt-6">\`.
-      - Use \`<h3>\` para títulos das seções.
-      - Use \`<table>\`, \`<thead>\`, \`<tbody>\`, \`<tr>\`, \`<th>\`, \`<td>\` para todos os dados tabulares.
-      - Use \`<ul>\` e \`<li>\` para listas de recomendações.
-      - Use \`<strong>\` para destaques.
-      - **NÃO** use \`<style>\` ou \`<script>\`.
+      **Estrutura HTML e Classes Tailwind:**
+      - Container principal: \`<div class="space-y-6">\`
+      - Grid de KPIs: \`<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">\`
+      - Card de KPI: \`<div class="bg-slate-100 dark:bg-secondary p-4 rounded-lg shadow"><p class="text-sm text-slate-500 dark:text-slate-400">Label</p><p class="text-3xl font-bold text-accent">Value</p></div>\`
+      - Títulos de seção: \`<h3 class="text-xl font-bold mb-3 text-slate-800 dark:text-slate-100">Título</h3>\`
+      - Tabelas: use a estrutura \`<table class="w-full text-left text-sm">...\` com \`<thead>\`, \`<tbody>\`, etc.
+        - Header da tabela: \`<thead class="bg-slate-50 dark:bg-secondary"><tr class="border-b dark:border-slate-600"><th>...</th></tr></thead>\`
+        - Linhas da tabela: \`<tr class="border-b dark:border-slate-700"><td>...</td></tr>\`
 
-      Analise os dados JSON a seguir, que contêm todas as movimentações do mês, e a lista completa de itens e técnicos para referência.
-
-      **Dados do Mês:**
-      ${JSON.stringify(summarizedMonthData)}
-
-      **Estrutura do Dashboard:**
-      1.  **Métricas Chave (KPIs):** Crie 4 cards com:
-          - Valor Total Consumido (R$)
-          - Total de Itens (unidades) Retirados
-          - Número de Itens Únicos Movimentados
-          - Alertas de Estoque Crítico (Nº de itens que ficaram abaixo do ponto de ressuprimento no mês)
-      
-      2.  **Análise de Consumo:**
-          - Uma seção com uma tabela "Top 5 Itens Mais Consumidos (por Valor)". Colunas: 'Item', 'Valor Total (R$)'.
-          - Outra tabela "Top 5 Itens Mais Consumidos (por Quantidade)". Colunas: 'Item', 'Quantidade Total'.
-
-      3.  **Análise de Técnicos:**
-          - Uma seção com uma tabela "Atividade dos Técnicos". Colunas: 'Técnico', 'Nº de Requisições', 'Valor Total Retirado (R$)'. Mostre os 3 mais ativos.
-          
-      4.  **Insights e Recomendações da IA:**
-          - Uma seção final com uma lista (\`<ul>\`) contendo 2 a 3 observações acionáveis baseadas nos padrões de consumo do mês. Foque em otimização de estoque, possíveis excessos ou faltas, e padrões de consumo incomuns.
+      **Dados para Análise:** ${JSON.stringify(monthData)}
     `;
-    return this.generateContent(prompt);
+    try {
+      const response = await this.ai()!.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+      return response.text;
+    } catch (error) { this.handleApiError(error); }
   }
 
   async suggestReorderPoint(item: Item, movements: Movement[]): Promise<{ suggestion: number; reasoning: string } | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-        this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-        return null;
-    }
-
-    const itemMovements = movements
-      .filter(m => m.itemId === item.id && m.type === 'out')
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 50); // Limit to last 50 movements to keep prompt size reasonable
-
-    const schema = {
-      type: Type.OBJECT,
-      properties: {
-        suggestion: { type: Type.INTEGER, description: 'O ponto de ressuprimento numérico sugerido.' },
-        reasoning: { type: Type.STRING, description: 'Uma explicação curta (1-2 frases) para a sugestão.' },
-      },
-      required: ["suggestion", "reasoning"],
-    };
-
-    const prompt = `
-      Você é um especialista em cadeia de suprimentos. Analise o histórico de consumo de um item e sugira um ponto de ressuprimento ideal.
-      O objetivo é evitar a falta de estoque (stockout) sem manter excesso de inventário.
-      
-      Item Atual:
-      - Nome: ${item.name}
-      - Ponto de Ressuprimento Atual: ${item.reorderPoint}
-      - Estoque Atual: ${item.quantity}
-
-      Histórico de Saídas Recentes (quantidade e data):
-      ${itemMovements.length > 0 ? itemMovements.map(m => `- ${m.quantity} em ${new Date(m.date).toLocaleDateString('pt-BR')}`).join('\n') : 'Nenhum histórico de saída recente.'}
-      
-      Considerando a frequência e a quantidade das saídas, sugira um novo ponto de ressuprimento. Forneça uma breve justificativa.
-      Responda APENAS com o objeto JSON.
-    `;
-
+    if (!this.isConfigured()) return null;
+    const itemMovements = movements.filter(m => m.itemId === item.id && m.type === 'out');
+    if (itemMovements.length < 3) return null;
+    const prompt = `Sugira um ponto de ressuprimento para o item ${JSON.stringify(item)} com base em seu histórico de consumo: ${JSON.stringify(itemMovements)}. Forneça a sugestão e uma breve justificativa.`;
     try {
-      const response = await aiInstance.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
+      const response = await this.ai()!.models.generateContent({
+        model: 'gemini-2.5-flash', contents: prompt,
         config: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: { suggestion: { type: Type.INTEGER }, reasoning: { type: Type.STRING } }
+            }
         }
       });
-      const jsonText = response.text.trim();
-      return JSON.parse(jsonText);
+      return JSON.parse(response.text.trim());
     } catch (error) {
-      console.error('Error suggesting reorder point:', error);
-      this.toastService.addToast('Falha ao sugerir ponto de ressuprimento.', 'error');
+      console.error("Gemini suggestReorderPoint Error:", error);
       return null;
     }
   }
-
+  
   async forecastDemand(item: Item, movements: Movement[]): Promise<Forecast | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-        this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-        return null;
-    }
-
-    // --- OPTIMIZATION: Aggregate consumption by day for the last year ---
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-    const relevantMovements = movements.filter(m => 
-      m.itemId === item.id && 
-      m.type === 'out' && 
-      new Date(m.date) >= oneYearAgo
-    );
-
-    const dailyConsumption = new Map<string, number>();
-    for (const move of relevantMovements) {
-      const dateString = move.date.split('T')[0]; // Get YYYY-MM-DD
-      dailyConsumption.set(dateString, (dailyConsumption.get(dateString) || 0) + move.quantity);
-    }
-
-    const itemMovements = Array.from(dailyConsumption.entries())
-      .map(([date, quantity]) => ({ date, quantity }))
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    // --- END OPTIMIZATION ---
-    
-    const allItems = this.dbService.db().items;
-    const itemWithStock = allItems.find(i => i.id === item.id);
-    const currentStock = itemWithStock?.quantity ?? 0;
-
-    const schema = {
-      type: Type.OBJECT,
-      properties: {
-        summary: {
-          type: Type.STRING,
-          description: 'Um resumo em parágrafo (3-4 frases) da análise de demanda, mencionando tendências, sazonalidade ou padrões observados. Se houver poucos dados históricos, mencione a baixa confiança da previsão.'
-        },
-        forecast: {
-          type: Type.ARRAY,
-          description: 'Uma previsão de consumo para os próximos 30 dias.',
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              date: { type: Type.STRING, description: 'A data da previsão no formato AAAA-MM-DD.' },
-              predicted_consumption: { type: Type.INTEGER, description: 'A quantidade inteira de consumo prevista para aquele dia.' },
-            },
-            required: ["date", "predicted_consumption"],
-          }
-        },
-        purchase_recommendation: {
-            type: Type.OBJECT,
-            description: 'Uma recomendação de compra baseada na previsão e no estoque atual.',
-            properties: {
-                should_purchase: { type: Type.BOOLEAN, description: 'Indica se uma nova compra é recomendada nos próximos 30 dias.' },
-                quantity_to_purchase: { type: Type.INTEGER, description: 'A quantidade sugerida para a compra. Retorne 0 se should_purchase for false.' },
-                purchase_date: { type: Type.STRING, description: 'A data sugerida para a compra (AAAA-MM-DD), baseada em quando o estoque atingirá o ponto de ressuprimento. Retorne uma string vazia se should_purchase for false.' },
-                reasoning: { type: Type.STRING, description: 'Uma explicação concisa para a recomendação de compra.' }
-            },
-            required: ["should_purchase", "quantity_to_purchase", "purchase_date", "reasoning"],
-        }
-      },
-      required: ["summary", "forecast", "purchase_recommendation"],
-    };
-
-    const prompt = `
-      Você é um analista de dados especialista em previsão de demanda de inventário.
-      Analise o histórico de consumo para o item "${item.name}" e forneça uma previsão de demanda e uma recomendação de compra para os próximos 30 dias a partir da data de hoje (${new Date().toISOString().split('T')[0]}).
-
-      Dados do Item:
-      - Estoque Atual: ${currentStock} unidades
-      - Ponto de Ressuprimento: ${item.reorderPoint} unidades
-
-      Dados históricos de consumo (data e quantidade):
-      ${JSON.stringify(itemMovements)}
-
-      Sua tarefa:
-      1.  Analisar os dados históricos para identificar padrões. Se os dados forem esparsos ou insuficientes (ex: menos de 5 saídas), mencione isso no resumo e prossiga com uma previsão conservadora.
-      2.  Gerar uma previsão diária de consumo para os próximos 30 dias. A previsão deve ser realista. Se não houver dados, a previsão deve ser zero.
-      3.  Escrever um resumo conciso da sua análise.
-      4.  Com base na previsão, no estoque atual e no ponto de ressuprimento, determinar se uma nova compra é necessária. Calcule quando o estoque atingirá o ponto de ressuprimento e sugira uma data e quantidade para a compra. Se a compra não for necessária, indique isso claramente.
-      
-      Responda APENAS com o objeto JSON.
-    `;
-
-     try {
-      const response = await aiInstance.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
-        }
-      });
-      const jsonText = response.text.trim();
-      return JSON.parse(jsonText) as Forecast;
-    } catch (error)
-    {
-      console.error('Error forecasting demand:', error);
-      this.toastService.addToast('Falha ao gerar previsão de demanda.', 'error');
+    if (!this.isConfigured()) return null;
+    const prompt = `Analise o histórico de consumo do item ${JSON.stringify(item)} (movimentos: ${JSON.stringify(movements)}) e gere uma previsão de demanda para os próximos 30 dias, junto com uma recomendação de compra.`;
+    try {
+        const response = await this.ai()!.models.generateContent({
+            model: 'gemini-2.5-flash', contents: prompt,
+            config: { responseMimeType: "application/json" }
+        });
+        return JSON.parse(response.text.trim());
+    } catch (error) {
+      console.error("Gemini forecastDemand Error:", error);
       return null;
     }
   }
 
-  async analyzeItemImage(imageBase64: string, existingCategories: string[]): Promise<{ name: string; category: string; description:string } | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-        this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-        return null;
-    }
-
-    const imagePart = {
-        inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageBase64,
-        },
-    };
-
-    const textPart = {
-        text: `Você é um especialista em catalogação de itens de almoxarifado. Analise a imagem e identifique o item principal.
-        
-        Categorias existentes: [${existingCategories.join(', ')}]
-
-        Sua tarefa é retornar um objeto JSON com as seguintes propriedades:
-        - "name": O nome mais específico e comum para o item (ex: "Chave de Fenda Phillips", "Resistor de 10k Ohm", "Cabo de Rede Cat6 Azul").
-        - "category": A categoria mais apropriada da lista de categorias existentes. Se nenhuma for adequada, sugira uma nova categoria concisa.
-        - "description": Uma descrição curta e útil para o item, com no máximo 150 caracteres.
-
-        Responda APENAS com o objeto JSON.`
-    };
-
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            name: { type: Type.STRING, description: 'O nome do item.' },
-            category: { type: Type.STRING, description: 'A categoria do item.' },
-            description: { type: Type.STRING, description: 'A descrição do item.' },
-        },
-        required: ["name", "category", "description"]
-    };
-
+  async analyzeItemImage(imageBase64: string, existingCategories: string[]): Promise<{ name: string; unit: string; category: string; description:string } | null> {
+    if (!this.isConfigured()) return null;
+    const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } };
+    const textPart = { text: `Identifique este item de almoxarifado. Forneça nome, uma unidade de medida (como 'un.', 'pç', 'kg', 'm', 'L', 'rolo', 'par'), uma categoria (escolha de: ${existingCategories.join(', ')} ou sugira uma nova) e uma breve descrição técnica.` };
     try {
-        const response: GenerateContentResponse = await aiInstance.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [imagePart, textPart] },
+        const response = await this.ai()!.models.generateContent({
+            model: 'gemini-2.5-flash', contents: { parts: [imagePart, textPart] },
             config: {
                 responseMimeType: "application/json",
-                responseSchema: schema,
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: { name: { type: Type.STRING }, unit: { type: Type.STRING }, category: { type: Type.STRING }, description: { type: Type.STRING } }
+                }
             }
         });
-        const jsonText = response.text.trim();
-        return JSON.parse(jsonText);
+        return JSON.parse(response.text.trim());
     } catch (error) {
-        console.error('Error analyzing image with Gemini:', error);
-        this.toastService.addToast('Falha ao analisar a imagem. Tente uma foto mais nítida.', 'error');
+        console.error("Gemini analyzeItemImage Error:", error);
         return null;
     }
   }
 
   async findMatchingItems(itemDescription: string, allItems: Item[]): Promise<string[] | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-        this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-        return null;
-    }
-
-    const availableItems = allItems.map(i => ({ id: i.id, name: i.name, description: i.description, category: i.category }));
-
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            matchingItemIds: {
-                type: Type.ARRAY,
-                description: 'Uma lista dos IDs dos itens mais prováveis, ordenados por relevância. Retorne no máximo 3.',
-                items: { type: Type.STRING }
-            }
-        },
-        required: ["matchingItemIds"]
-    };
-
-    const prompt = `
-      Você é um assistente especialista em busca de inventário. Sua tarefa é encontrar os itens mais relevantes em uma lista de estoque com base na descrição de um item fotografado.
-
-      Descrição do item fotografado: "${itemDescription}"
-
-      Lista de itens disponíveis no inventário (com ID, nome, descrição e categoria):
-      ${JSON.stringify(availableItems)}
-
-      Analise a descrição do item fotografado e, com base nela, retorne um array com os IDs dos 3 itens mais prováveis da lista de inventário. Ordene os IDs do mais provável para o menos provável.
-      Se nenhum item parecer uma boa correspondência, retorne um array vazio.
-
-      Responda APENAS com o objeto JSON.
-    `;
-
-    try {
-        const response: GenerateContentResponse = await aiInstance.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
+     if (!this.isConfigured()) return null;
+     const prompt = `Dada a descrição "${itemDescription}", encontre os IDs dos 3 itens mais prováveis na lista a seguir. Retorne apenas um array de IDs. Lista de Itens: ${JSON.stringify(allItems.map(i => ({id: i.id, name: i.name, description: i.description})))}`;
+     try {
+        const response = await this.ai()!.models.generateContent({
+            model: 'gemini-2.5-flash', contents: prompt,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: schema,
+                responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
             }
         });
-        const jsonText = response.text.trim();
-        const result = JSON.parse(jsonText);
-        return result.matchingItemIds as string[];
-    } catch (error) {
-        console.error('Error finding matching items with Gemini:', error);
-        this.toastService.addToast('Falha na busca inteligente de itens.', 'error');
+        return JSON.parse(response.text.trim());
+     } catch (error) {
+        console.error("Gemini findMatchingItems Error:", error);
         return null;
-    }
+     }
   }
 
   async detectAnomalies(movements: Movement[], items: Item[], technicians: Technician[]): Promise<AnomalyReport | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-      this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-      return null;
-    }
-
-    // --- OPTIMIZATION: Reduce payload size ---
-    const movementsForAnalysis = movements
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 500); // Reduced from 1000 to 500
-
-    const relevantItemIds = new Set(movementsForAnalysis.map(m => m.itemId));
-    const relevantTechnicianIds = new Set(movementsForAnalysis.map(m => m.technicianId).filter((id): id is string => !!id));
-
-    const itemsForContext = items
-        .filter(i => relevantItemIds.has(i.id))
-        .map(i => ({
-            id: i.id,
-            name: i.name,
-            price: i.price,
-            reorderPoint: i.reorderPoint
-        }));
-    
-    const techniciansForContext = technicians.filter(t => relevantTechnicianIds.has(t.id));
-
-    // Create a compact version of movements for the prompt
-    const compactMovements = movementsForAnalysis.map(m => ({
-      id: m.id,
-      itemId: m.itemId,
-      quantity: m.quantity,
-      date: m.date,
-      technicianId: m.technicianId
-    }));
-    // --- END OPTIMIZATION ---
-
-    const anomalySchema = {
-      type: Type.OBJECT,
-      properties: {
-        movementId: { type: Type.STRING, description: 'O ID da movimentação anômala.' },
-        technicianName: { type: Type.STRING, description: 'O nome do técnico.' },
-        itemName: { type: Type.STRING, description: 'O nome do item.' },
-        date: { type: Type.STRING, description: 'A data da movimentação.' },
-        quantity: { type: Type.INTEGER, description: 'A quantidade retirada.' },
-        reason: { type: Type.STRING, description: 'A explicação concisa do porquê esta movimentação é considerada uma anomalia.' },
-        severity: { type: Type.STRING, description: 'O nível de severidade da anomalia.', enum: ['Baixa', 'Média', 'Alta'] },
-      },
-      required: ["movementId", "technicianName", "itemName", "date", "quantity", "reason", "severity"]
-    };
-
-    const reportSchema = {
-      type: Type.OBJECT,
-      properties: {
-        summary: {
-          type: Type.STRING,
-          description: 'Um resumo executivo de 2 a 3 frases sobre a análise geral, mencionando se foram encontradas anomalias significativas.'
-        },
-        anomalies: {
-          type: Type.ARRAY,
-          description: 'Uma lista de todas as movimentações de saída que foram identificadas como anomalias.',
-          items: anomalySchema
-        }
-      },
-      required: ["summary", "anomalies"]
-    };
-
-    const prompt = `
-      Você é um auditor de inventário experiente. Sua tarefa é analisar uma lista de movimentações de saída de um almoxarifado e identificar anomalias.
-      
-      Dados de Referência:
-      - Itens: ${JSON.stringify(itemsForContext)}
-      - Técnicos: ${JSON.stringify(techniciansForContext)}
-
-      Dados das Movimentações de Saída para Análise:
-      ${JSON.stringify(compactMovements)}
-
-      Procure por padrões incomuns, como:
-      1.  **Quantidade Atípica:** Retirada de uma quantidade muito superior à média para um item específico.
-      2.  **Frequência Elevada:** Um mesmo técnico retirando o mesmo item repetidamente em um curto período.
-      3.  **Valor Incomum:** Retiradas de itens de alto valor em grande quantidade ou com frequência.
-      4.  **Padrões de Fim de Semana/Fora de Hora:** (Se houver dados de hora) movimentações em horários não comerciais.
-
-      Sua tarefa:
-      - Analise os dados e forneça um resumo geral.
-      - Identifique as movimentações que você considera anômalas.
-      - Para cada anomalia, forneça o ID da movimentação, o motivo e um nível de severidade (Baixa, Média, Alta).
-      - Se nenhuma anomalia for encontrada, retorne um resumo informando isso e uma lista de anomalias vazia.
-
-      Responda APENAS com o objeto JSON.
-    `;
-
+    if (!this.isConfigured()) return null;
+    const prompt = `Analise os movimentos de estoque e detecte anomalias (quantidades, frequências, horários atípicos). Dados: ${JSON.stringify({ movements, items, technicians })}.`;
     try {
-      const response = await aiInstance.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: reportSchema,
-        }
-      });
-      const jsonText = response.text.trim();
-      return JSON.parse(jsonText) as AnomalyReport;
+        const response = await this.ai()!.models.generateContent({
+            model: 'gemini-2.5-flash', contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        summary: { type: Type.STRING },
+                        anomalies: { type: Type.ARRAY, items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                movementId: { type: Type.STRING }, technicianName: { type: Type.STRING }, itemName: { type: Type.STRING },
+                                date: { type: Type.STRING }, quantity: { type: Type.INTEGER }, reason: { type: Type.STRING },
+                                severity: { type: Type.STRING, enum: ['Baixa', 'Média', 'Alta'] }
+                            }
+                        }}
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text.trim());
     } catch (error) {
-      console.error('Error detecting anomalies with Gemini:', error);
-      this.toastService.addToast('Falha ao executar a detecção de anomalias.', 'error');
-      return null;
+        console.error("Gemini detectAnomalies Error:", error);
+        return null;
     }
   }
 
   async analyzeInvoiceImage(imageBase64: string): Promise<ParsedInvoiceItem[] | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-      this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-      return null;
-    }
-
-    const imagePart = {
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: imageBase64,
-      },
-    };
-
-    const textPart = {
-      text: `Você é um assistente de OCR (Reconhecimento Óptico de Caracteres) especializado em processar notas fiscais para um sistema de inventário.
-      Analise a imagem da nota fiscal e extraia a lista de itens.
-      
-      Sua tarefa é retornar um array de objetos JSON, onde cada objeto representa um item da nota.
-      - Ignore cabeçalhos, rodapés, informações de impostos, totais, e qualquer outra informação que não seja um item da lista de produtos.
-      - Extraia o nome do produto, a quantidade e o preço unitário.
-      - Para a quantidade, use o valor inteiro.
-      - Para o preço, use o valor numérico, usando ponto como separador decimal.
-      
-      Responda APENAS com o array JSON.`
-    };
-
-    const schema = {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING, description: 'O nome do item.' },
-          quantity: { type: Type.INTEGER, description: 'A quantidade do item.' },
-          price: { type: Type.NUMBER, description: 'O preço unitário do item.' },
-        },
-        required: ["name", "quantity", "price"]
-      }
-    };
-
+    if (!this.isConfigured()) return null;
+    const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } };
+    const textPart = { text: "Extraia os itens, quantidades e preços unitários desta nota fiscal." };
     try {
-      const response: GenerateContentResponse = await aiInstance.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart, textPart] },
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
-        }
-      });
-      const jsonText = response.text.trim();
-      return JSON.parse(jsonText) as ParsedInvoiceItem[];
+        const response = await this.ai()!.models.generateContent({
+            model: 'gemini-2.5-flash', contents: { parts: [imagePart, textPart] },
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: { name: { type: Type.STRING }, quantity: { type: Type.NUMBER }, price: { type: Type.NUMBER } }
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text.trim());
     } catch (error) {
-      console.error('Error analyzing invoice image with Gemini:', error);
-      this.toastService.addToast('Falha ao ler a nota fiscal. Tente uma imagem mais nítida e sem reflexos.', 'error');
-      return null;
+        console.error("Gemini analyzeInvoiceImage Error:", error);
+        return null;
     }
   }
 
   async generatePredictiveMaintenanceReport(movements: Movement[], items: Item[]): Promise<string> {
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const recentMovements = movements
-        .filter(m => new Date(m.date) >= oneYearAgo && m.type === 'out')
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 2000);
+    if (!this.isConfigured()) this.handleApiError(new Error('Chave de API não configurada.'));
 
-    // Otimização: Enviar apenas os itens relevantes para a análise.
-    const relevantItemIds = new Set(recentMovements.map(m => m.itemId));
-    const itemsForContext = items
-        .filter(i => relevantItemIds.has(i.id))
-        .map(i => ({id: i.id, name: i.name, category: i.category}));
-
-    const prompt = `
-    Você é um engenheiro de manutenção preditiva sênior. Sua tarefa é analisar o histórico de consumo de peças de um almoxarifado (do último ano) e gerar um relatório proativo de manutenção.
-    **RESPONDA EM PORTUGUÊS E FORMATE A SAÍDA ESTRITAMENTE EM HTML.**
-
-    Use as seguintes tags:
-    - \`<h3>\` para os títulos das seções.
-    - \`<p>\` para parágrafos de texto.
-    - \`<strong>\` para destacar termos importantes.
-    - \`<table>\`, \`<thead>\`, \`<tbody>\`, \`<tr>\`, \`<th>\`, \`<td>\` para todos os dados tabulares.
-    - \`<ul>\` e \`<li>\` para listas de sugestões.
-    - **NÃO** use \`<style>\`, \`<div>\`, \`<script>\` ou qualquer outra tag não listada.
-
-    Analise os dados de movimentações de saída para identificar padrões de consumo recorrentes que possam indicar a necessidade de manutenção preventiva.
-
-    **Sua Análise deve Incluir:**
-    1.  **Resumo da Análise:** Um parágrafo explicando a metodologia (busca por padrões de consumo cíclicos) e um resumo dos insights encontrados.
-    2.  **Recomendações de Manutenção Proativa:** Uma tabela com as sugestões mais urgentes. Colunas: 'Item/Peça', 'Padrão de Consumo Detectado', 'Última Troca', 'Ação Recomendada'.
-
-    **Exemplo de Insight:**
-    - Se um 'Rolamento 6204' é retirado consistentemente a cada 90-100 dias, isso indica um ciclo de troca. Se a última retirada foi há 85 dias, a próxima manutenção está próxima.
-    - Ação recomendada deve ser algo como: "Agendar verificação do equipamento associado e confirmar estoque da peça."
-
-    Foque apenas em itens que pareçam ser peças de reposição (ex: rolamentos, correias, filtros) e que tenham um padrão de consumo claro (pelo menos 3 saídas com intervalos semelhantes). Ignore itens de consumo geral como canetas ou material de limpeza.
-
-    A data de hoje é ${new Date().toLocaleDateString('pt-BR')}.
-
-    **Dados para Análise:**
-    - Itens Disponíveis: ${JSON.stringify(itemsForContext)}
-    - Histórico de Saídas (último ano): ${JSON.stringify(recentMovements)}
-    `;
-
-    return this.generateContent(prompt);
-  }
-
-  async suggestCycleCountItems(allItems: Item[]): Promise<{ itemsToCount: {id: string, name: string}[], reasoning: string } | null> {
-    const aiInstance = this.ai();
-    if (!aiInstance) {
-      this.toastService.addToast('Serviço de IA não configurado. A chave de API pode ser inválida.', 'error');
-      return null;
-    }
-
-    const itemsForPrompt = allItems.map(i => ({ id: i.id, name: i.name, value: i.price * i.quantity, quantity: i.quantity }));
-
-    const schema = {
-      type: Type.OBJECT,
-      properties: {
-        reasoning: { 
-          type: Type.STRING, 
-          description: 'Uma breve explicação (1-2 frases) sobre por que estes itens foram selecionados para contagem.' 
-        },
-        itemsToCount: {
-          type: Type.ARRAY,
-          description: 'Uma lista de objetos, cada um contendo o id e o nome de um item para contar.',
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING, description: 'O ID do item.' },
-              name: { type: Type.STRING, description: 'O nome do item.' }
-            },
-            required: ['id', 'name']
-          }
-        }
-      },
-      required: ['reasoning', 'itemsToCount']
+    // Prune data to the minimum required fields to avoid token limits.
+    const relevantData = {
+        items: items.map(({ id, name, category }) => ({ id, name, category })),
+        movements: movements
+            .filter(m => m.type === 'out') // Only consumption is relevant
+            .map(({ itemId, date }) => ({ itemId, date }))
     };
 
     const prompt = `
-      Você é um especialista em inventário. Sua tarefa é sugerir de 5 a 10 itens para uma contagem cíclica.
-      Priorize itens que sejam importantes para a operação. Critérios de importância incluem:
-      1. Alto valor total em estoque (preço * quantidade).
-      2. Itens que podem ter maior probabilidade de discrepância (ex: itens pequenos e numerosos).
-      
-      Aqui está a lista de itens disponíveis no inventário:
-      ${JSON.stringify(itemsForPrompt)}
+      Analise o consumo de peças de reposição (como rolamentos, filtros, correias, etc.) e sugira um relatório de manutenção preditiva em HTML, formatado com classes do Tailwind CSS.
+      O relatório deve:
+      1.  Identificar peças com padrão de consumo cíclico.
+      2.  Prever a próxima data provável de necessidade para essas peças.
+      3.  Apresentar uma tabela com as peças, seu ciclo de consumo médio (em dias) e a próxima data de troca sugerida.
 
-      Analise a lista e retorne um objeto JSON com uma lista de 5 a 10 itens para contar e uma breve justificativa para sua seleção.
-      Responda APENAS com o objeto JSON.
+      **Estrutura HTML e Classes Tailwind:**
+      - Container principal: \`<div class="space-y-6">\`
+      - Títulos de seção: \`<h3 class="text-xl font-bold mb-3 text-slate-800 dark:text-slate-100">Peças com Padrão de Consumo Identificado</h3>\`
+      - Parágrafos: \`<p class="mb-2 text-slate-600 dark:text-slate-300">Texto explicativo.</p>\`
+      - Tabelas: use a estrutura \`<table class="w-full text-left text-sm">...\` com \`<thead>\`, \`<tbody>\`, etc.
+      - Para datas futuras ou importantes, use \`<span class="font-bold text-accent">...\`.
+
+      **Dados para Análise:** ${JSON.stringify(relevantData)}
     `;
-
     try {
-      const response = await aiInstance.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
-        }
-      });
-      const jsonText = response.text.trim();
-      return JSON.parse(jsonText);
+      const response = await this.ai()!.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
+      return response.text;
+    } catch (error) { this.handleApiError(error); }
+  }
+  
+  async suggestCycleCountItems(allItems: Item[]): Promise<{ itemsToCount: {id: string, name: string}[], reasoning: string } | null> {
+    if (!this.isConfigured()) return null;
+    const prompt = `Com base na lista de itens, sugira 10 itens para contagem cíclica, priorizando itens de alto valor, alto giro ou com estoque baixo. Forneça o motivo da sua sugestão. Itens: ${JSON.stringify(allItems.map(i => ({id: i.id, name: i.name, quantity: i.quantity, price: i.price, reorderPoint: i.reorderPoint})))}`;
+    try {
+        const response = await this.ai()!.models.generateContent({
+            model: 'gemini-2.5-flash', contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        reasoning: { type: Type.STRING },
+                        itemsToCount: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: { id: { type: Type.STRING }, name: { type: Type.STRING } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text.trim());
     } catch (error) {
-      console.error('Error suggesting cycle count items with Gemini:', error);
-      this.toastService.addToast('Falha ao sugerir itens para contagem.', 'error');
-      return null;
+        console.error("Gemini suggestCycleCountItems Error:", error);
+        return null;
+    }
+  }
+  
+  async generateChatResponse(params: { contents: any[], tools?: any[] }): Promise<GenerateContentResponse> {
+    if (!this.isConfigured() || !this.ai()) this.handleApiError(new Error('Chave de API não configurada.'));
+    try {
+      const response = await this.ai()!.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: params.contents,
+        config: { 
+          tools: params.tools,
+          thinkingConfig: { thinkingBudget: 0 } 
+        } // Low latency for chat
+      });
+      return response;
+    } catch (error) {
+      console.error("Gemini Chat Error:", error);
+      return {
+        candidates: [{ content: { parts: [{ text: "Desculpe, ocorreu um erro ao se comunicar com o assistente." }], role: 'model' }, finishReason: 'ERROR' }],
+        text: "Desculpe, ocorreu um erro ao se comunicar com o assistente."
+      } as unknown as GenerateContentResponse;
     }
   }
 }

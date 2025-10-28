@@ -1,4 +1,5 @@
 
+
 import { Component, ChangeDetectionStrategy, inject, computed, signal, input, effect, viewChild, ElementRef, OnDestroy, output, viewChildren, Signal, WritableSignal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, Validators, FormControl } from '@angular/forms';
@@ -1103,8 +1104,10 @@ export class InventoryComponent implements OnDestroy {
         newCategories.add(itemValue.category);
       }
 
+// FIX: Added the missing 'unit' property when creating items in a batch.
       itemsToCreate.push({
         name: itemValue.name,
+        unit: itemValue.unit,
         category: itemValue.category,
         description: itemValue.description || '',
         price: Number(itemValue.price) || 0,

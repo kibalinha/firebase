@@ -55,25 +55,40 @@
   }
   /* Estilos para o relatório de IA renderizado */
   .report-content-wrapper h3 {
-    @apply text-lg font-bold mb-3 text-slate-900 dark:text-slate-100;
+    @apply text-xl font-bold mb-4 text-slate-800 dark:text-slate-100;
   }
   .report-content-wrapper p {
-    @apply mb-2 text-slate-600 dark:text-slate-300;
+    @apply mb-3 text-slate-600 dark:text-slate-300;
+  }
+  .report-content-wrapper .kpi-grid {
+    @apply grid grid-cols-2 md:grid-cols-4 gap-4 mb-6;
+  }
+  .report-content-wrapper .kpi-card {
+    @apply bg-slate-100 dark:bg-secondary p-4 rounded-lg shadow text-center;
+  }
+  .report-content-wrapper .kpi-label {
+    @apply text-sm text-slate-500 dark:text-slate-400;
+  }
+  .report-content-wrapper .kpi-value {
+    @apply text-3xl font-bold text-accent;
   }
   .report-content-wrapper table {
-    @apply w-full text-left border-collapse mb-4;
+    @apply w-full text-left text-sm border-collapse;
   }
   .report-content-wrapper th, .report-content-wrapper td {
-    @apply border border-slate-300 dark:border-slate-600 p-2;
+    @apply border-b border-slate-200 dark:border-slate-700 p-3;
   }
   .report-content-wrapper th {
-    @apply bg-slate-100 dark:bg-secondary;
+    @apply bg-slate-50 dark:bg-secondary font-semibold;
+  }
+  .report-content-wrapper tbody tr:hover {
+    @apply bg-slate-50 dark:bg-secondary/50;
   }
   .report-content-wrapper ul {
-    @apply list-disc list-inside pl-4 mb-4;
+    @apply list-disc list-inside pl-4 mb-4 space-y-1;
   }
   .report-content-wrapper li {
-    @apply mb-1;
+    @apply pl-2;
   }
   /* Estilos para o tooltip do D3 */
   .d3-tooltip {
@@ -147,12 +162,12 @@
     }
   }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script type="importmap">
 {
   "imports": {
-    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
     "rxjs": "https://aistudiocdn.com/rxjs@^7.8.2?conditions=es2015",
     "rxjs/operators": "https://aistudiocdn.com/rxjs@^7.8.2/operators?conditions=es2015",
     "rxjs/ajax": "https://aistudiocdn.com/rxjs@^7.8.2/ajax?conditions=es2015",
@@ -170,7 +185,8 @@
     "@angular/common/locales/pt": "https://next.esm.sh/@angular/common@^20.1.6-0/locales/pt?external=rxjs",
     "@angular/core/testing": "https://next.esm.sh/@angular/core@^20.3.1/testing?external=rxjs",
     "@zxing/library": "https://esm.sh/@zxing/library@0.21.0",
-    "@angular/router": "https://next.esm.sh/@angular/router@^20.1.6-0?external=rxjs"
+    "@angular/router": "https://next.esm.sh/@angular/router@^20.1.6-0?external=rxjs",
+    "@angular/common/http/testing": "https://next.esm.sh/@angular/common@^20.3.5/http/testing?external=rxjs"
   }
 }
 </script>

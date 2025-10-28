@@ -5,6 +5,7 @@ import { DatabaseService } from '../services/database.service';
 import { ToastService } from '../services/toast.service';
 import { Technician, Supplier, AlmoxarifadoDB } from '../models';
 import { cnpjValidator } from '../validators/cnpj.validator';
+import { AuthService } from '../services/auth.service';
 
 type ManagementType = 'technicians' | 'suppliers';
 type Entity = Technician | Supplier;
@@ -33,9 +34,11 @@ interface Config {
           class="bg-white dark:bg-primary p-2 rounded-md border border-slate-300 dark:border-secondary focus:border-accent focus:outline-none"
           [formControl]="searchControl"
         />
-        <button (click)="openForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
-          Adicionar {{ config().title.slice(0, -1) }}
-        </button>
+        @if (!authService.isViewer()) {
+          <button (click)="openForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
+            Adicionar {{ config().title.slice(0, -1) }}
+          </button>
+        }
       </div>
 
       <div class="flex-grow overflow-auto">
@@ -53,7 +56,9 @@ interface Config {
                   </th>
                 }
               }
-              <th class="p-3">Ações</th>
+              @if (!authService.isViewer()) {
+                <th class="p-3">Ações</th>
+              }
             </tr>
           </thead>
           <tbody>
@@ -64,10 +69,12 @@ interface Config {
                     <td class="p-3">{{ $any(item)[field.name] }}</td>
                   }
                 }
-                <td class="p-3 flex items-center space-x-2">
-                  <button (click)="openForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent">✏️</button>
-                  <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error">🗑️</button>
-                </td>
+                @if (!authService.isViewer()) {
+                  <td class="p-3 flex items-center space-x-2">
+                    <button (click)="openForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent">✏️</button>
+                    <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error">🗑️</button>
+                  </td>
+                }
               </tr>
             } @empty {
               <tr>
@@ -90,10 +97,12 @@ interface Config {
                     }
                   }
                 </div>
-                <div class="flex items-center space-x-2 flex-shrink-0">
-                  <button (click)="openForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar">✏️</button>
-                  <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir">🗑️</button>
-                </div>
+                @if (!authService.isViewer()) {
+                  <div class="flex items-center space-x-2 flex-shrink-0">
+                    <button (click)="openForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar">✏️</button>
+                    <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir">🗑️</button>
+                  </div>
+                }
               </div>
             </div>
           } @empty {
@@ -167,7 +176,8 @@ export class ManagementComponent {
   
   private dbService = inject(DatabaseService);
   private toastService = inject(ToastService);
-  private fb = inject(FormBuilder);
+  private fb: FormBuilder = inject(FormBuilder);
+  authService = inject(AuthService);
   db = this.dbService.db;
 
   searchTerm = signal('');
@@ -238,7 +248,6 @@ export class ManagementComponent {
       if (!column) return items;
 
       return items.sort((a, b) => {
-        // FIX: Cast column to any to prevent "Type 'symbol' cannot be used as an index type" error.
         const aValue = (a as any)[column];
         const bValue = (b as any)[column];
 
@@ -288,9 +297,9 @@ export class ManagementComponent {
             validators = entity ? [Validators.minLength(4)] : [Validators.required, Validators.minLength(4)];
         } else if (this.type() === 'suppliers' && field.name === 'cnpj') {
             validators.push(cnpjValidator);
-        } else if (field.name === 'password' && !entity) { // Required only for new entities
+        } else if (field.name === 'password' && !entity) {
             validators = [Validators.required, Validators.minLength(4)];
-        } else if (field.name === 'password' && entity) { // Optional for existing entities
+        } else if (field.name === 'password' && entity) {
             validators = [Validators.minLength(4)];
         }
 
@@ -313,6 +322,7 @@ export class ManagementComponent {
     const collection = this.config().collection;
     const formValue = this.entityForm.value;
     const currentEntityVal = this.currentEntity();
+    const typeLabel = this.config().title.slice(0,-1);
 
     if (currentEntityVal?.id) {
       const updatedEntity = { ...currentEntityVal, ...formValue };
@@ -320,10 +330,10 @@ export class ManagementComponent {
         updatedEntity.password = (currentEntityVal as Technician).password;
       }
       await this.dbService.updateItem(collection, updatedEntity as Entity);
-      await this.dbService.logAction(`UPDATE_${collection.toUpperCase()}`, `Atualizado: ${updatedEntity.name}`);
+      await this.dbService.logAction(`UPDATE_${collection.toUpperCase()}`, `${typeLabel} '${updatedEntity.name}' (ID: ${updatedEntity.id}) atualizado.`);
     } else {
       const newItem = await this.dbService.addItem(collection, formValue as any);
-      await this.dbService.logAction(`CREATE_${collection.toUpperCase()}`, `Criado: ${(newItem as Entity).name}`);
+      await this.dbService.logAction(`CREATE_${collection.toUpperCase()}`, `${typeLabel} '${(newItem as Entity).name}' (ID: ${newItem.id}) criado.`);
     }
     this.toastService.addToast('Salvo com sucesso!', 'success');
     this.isFormOpen.set(false);
@@ -333,8 +343,9 @@ export class ManagementComponent {
     const entity = this.entityToDelete();
     if (entity) {
       const collection = this.config().collection;
+      const typeLabel = this.config().title.slice(0,-1);
       await this.dbService.deleteItem(collection, entity.id);
-      await this.dbService.logAction(`DELETE_${collection.toUpperCase()}`, `Removido: ${entity.name}`);
+      await this.dbService.logAction(`DELETE_${collection.toUpperCase()}`, `${typeLabel} '${entity.name}' (ID: ${entity.id}) removido.`);
       this.toastService.addToast('Excluído com sucesso!', 'success');
       this.entityToDelete.set(null);
     }

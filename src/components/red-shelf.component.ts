@@ -4,6 +4,7 @@ import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angula
 import { DatabaseService } from '../services/database.service';
 import { ToastService } from '../services/toast.service';
 import { Item, RedShelfItem, View, StrategicSector } from '../models';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-red-shelf',
@@ -17,9 +18,11 @@ import { Item, RedShelfItem, View, StrategicSector } from '../models';
           <h2 class="text-2xl font-bold">Prateleira Vermelha</h2>
           <p class="text-sm text-slate-500 dark:text-slate-400">Itens importantes para setores específicos, usados em ocasiões especiais.</p>
         </div>
-        <button (click)="openForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
-          + Adicionar Item
-        </button>
+        @if (!authService.isViewer()) {
+          <button (click)="openForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
+            + Adicionar Item
+          </button>
+        }
       </header>
       
       <div class="flex-grow overflow-auto">
@@ -29,10 +32,12 @@ import { Item, RedShelfItem, View, StrategicSector } from '../models';
                 <div class="flex-grow">
                   <div class="flex justify-between items-start">
                     <h3 class="font-bold text-lg mb-1">{{ item.name }}</h3>
-                    <div class="flex items-center space-x-2">
-                       <button (click)="openForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar Item">✏️</button>
-                       <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir Item">🗑️</button>
-                    </div>
+                    @if (!authService.isViewer()) {
+                      <div class="flex items-center space-x-2">
+                        <button (click)="openForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar Item">✏️</button>
+                        <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir Item">🗑️</button>
+                      </div>
+                    }
                   </div>
                    <p class="text-xs text-slate-400 mb-3">Adicionado em: {{ item.createdAt | date:'dd/MM/yyyy' }}</p>
 
@@ -46,11 +51,13 @@ import { Item, RedShelfItem, View, StrategicSector } from '../models';
                     <p class="text-sm mt-2 pt-2 border-t border-dashed border-slate-200 dark:border-secondary italic text-slate-500">"{{ item.notes }}"</p>
                   }
                 </div>
-                <div class="mt-4 pt-4 border-t border-slate-200 dark:border-secondary text-right">
-                  <button (click)="openAdjustmentModal(item)" class="bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700 text-sm">
-                    Ajustar Estoque
-                  </button>
-                </div>
+                @if (!authService.isViewer()) {
+                  <div class="mt-4 pt-4 border-t border-slate-200 dark:border-secondary text-right">
+                    <button (click)="openAdjustmentModal(item)" class="bg-amber-600 text-white px-4 py-2 rounded-md hover:bg-amber-700 text-sm">
+                      Ajustar Estoque
+                    </button>
+                  </div>
+                }
               </div>
             } @empty {
               <div class="col-span-full text-center p-10 text-slate-500 dark:text-slate-400 bg-white dark:bg-primary rounded-lg">
@@ -126,6 +133,7 @@ export class RedShelfComponent {
   private dbService = inject(DatabaseService);
   private toastService = inject(ToastService);
   private fb = inject(FormBuilder);
+  authService = inject(AuthService);
   db = this.dbService.db;
   
   sectorOptions = Object.values(StrategicSector);

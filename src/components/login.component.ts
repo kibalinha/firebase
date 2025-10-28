@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, Validators, FormGroup, FormControl } from '@angular/forms';
 import { AuthService } from '../services/auth.service';
 import { ToastService } from '../services/toast.service';
 
@@ -59,16 +59,17 @@ import { ToastService } from '../services/toast.service';
   `,
 })
 export class LoginComponent {
-  private fb = inject(FormBuilder);
+  private fb: FormBuilder = inject(FormBuilder);
   private authService = inject(AuthService);
-  private router = inject(Router);
+  // FIX: Explicitly type the router property to assist TypeScript's type inference.
+  private router: Router = inject(Router);
   private toastService = inject(ToastService);
 
   isLoading = signal(false);
 
   loginForm = this.fb.group({
-    username: ['admin', Validators.required],
-    password: ['admin123', Validators.required]
+    username: ['', Validators.required],
+    password: ['', Validators.required]
   });
 
   async login() {

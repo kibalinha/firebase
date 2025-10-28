@@ -6,6 +6,7 @@ import { DatabaseService } from '../services/database.service';
 
 interface RecognizedItem {
   name: string;
+  unit: string;
   category: string;
   description: string;
 }

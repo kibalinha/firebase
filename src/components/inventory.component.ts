@@ -9,6 +9,7 @@ import { GeminiService } from '../services/gemini.service';
 import { Item, SearchFilter, Supplier, Movement, ParsedInvoiceItem, View } from '../models';
 import { ImageRecognitionComponent } from './image-recognition.component';
 import { InvoiceRecognitionComponent } from './invoice-recognition.component';
+import { AuthService } from '../services/auth.service';
 
 declare var JsBarcode: any;
 declare var html2canvas: any;
@@ -44,26 +45,28 @@ interface AiSuggestion {
             <p class="text-sm text-slate-500 dark:text-slate-400">Gerencie e adicione novos tipos de itens ao seu estoque.</p>
         </div>
         <div class="flex gap-2 flex-wrap">
-           @if (selectedItemIds().size > 0) {
-            <button (click)="openDeleteMultipleConfirm()" class="bg-error text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors">
-              Excluir Selecionados ({{ selectedItemIds().size }})
-            </button>
-          } @else {
-            <button (click)="openPrintAllModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors">
-              Gerar Todas as Etiquetas
-            </button>
-            <button (click)="openBatchForm()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors">
-              Adicionar em Lote
-            </button>
-             <button (click)="isImageRecognitionOpen.set(true)" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700 transition-colors flex items-center gap-2">
-              Item por Foto 📸
-            </button>
-            <button (click)="isInvoiceRecognitionOpen.set(true)" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors flex items-center gap-2">
-              Via Nota Fiscal 🧾
-            </button>
-            <button (click)="openItemForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
-              + Adicionar Item
-            </button>
+          @if (!authService.isViewer()) {
+            @if (selectedItemIds().size > 0) {
+              <button (click)="openDeleteMultipleConfirm()" class="bg-error text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors">
+                Excluir Selecionados ({{ selectedItemIds().size }})
+              </button>
+            } @else {
+              <button (click)="openPrintAllModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors">
+                Gerar Todas as Etiquetas
+              </button>
+              <button (click)="openBatchForm()" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors">
+                Adicionar em Lote
+              </button>
+              <button (click)="isImageRecognitionOpen.set(true)" class="bg-sky-600 text-white px-4 py-2 rounded-md hover:bg-sky-700 transition-colors flex items-center gap-2">
+                Item por Foto 📸
+              </button>
+              <button (click)="isInvoiceRecognitionOpen.set(true)" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors flex items-center gap-2">
+                Via Nota Fiscal 🧾
+              </button>
+              <button (click)="openItemForm()" class="bg-accent text-white px-4 py-2 rounded-md hover:bg-info transition-colors">
+                + Adicionar Item
+              </button>
+            }
           }
         </div>
       </header>
@@ -144,11 +147,18 @@ interface AiSuggestion {
                   class="h-4 w-4 rounded text-accent focus:ring-accent"
                   [checked]="isAllOnPageSelected()"
                   (change)="toggleSelectAllOnPage()"
+                  [disabled]="authService.isViewer()"
                 />
               </th>
               <th class="p-3 cursor-pointer" (click)="handleSort('name')">
                 Nome
                 @if (sortColumn() === 'name') {
+                  <span class="ml-1">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
+                }
+              </th>
+              <th class="p-3 cursor-pointer" (click)="handleSort('unit')">
+                Unidade
+                @if (sortColumn() === 'unit') {
                   <span class="ml-1">{{ sortDirection() === 'asc' ? '▲' : '▼' }}</span>
                 }
               </th>
@@ -186,9 +196,11 @@ interface AiSuggestion {
                     class="h-4 w-4 rounded text-accent focus:ring-accent"
                     [checked]="selectedItemIds().has(item.id)"
                     (change)="toggleSelection(item.id)"
+                    [disabled]="authService.isViewer()"
                   />
                 </td>
                 <td class="p-3">{{ item.name }}</td>
+                <td class="p-3">{{ item.unit }}</td>
                 <td class="p-3">{{ item.category }}</td>
                 <td class="p-3">
                   <span 
@@ -203,19 +215,21 @@ interface AiSuggestion {
                    <button (click)="viewLifecycle(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Ciclo de Vida do Item">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>
                   </button>
-                  <button (click)="openAdjustmentModal(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Ajustar Estoque">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>
-                  </button>
-                  <button (click)="openPrintLabelModal(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Imprimir Etiqueta">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M1 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1H2a1 1 0 01-1-1V4zM6 3a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1h1zM11 3a1 1 0 011 1v4a1 1 0 01-2 0V4a1 1 0 011-1zM10 9a1 1 0 011 1v6a1 1 0 01-2 0v-6a1 1 0 011-1zM15 3a1 1 0 011 1v12a1 1 0 01-2 0V4a1 1 0 011-1z"/></svg>
-                  </button>
-                  <button (click)="openItemForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar Item">✏️</button>
-                  <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir Item">🗑️</button>
+                  @if (!authService.isViewer()) {
+                    <button (click)="openAdjustmentModal(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Ajustar Estoque">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>
+                    </button>
+                    <button (click)="openPrintLabelModal(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Imprimir Etiqueta">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M1 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1H2a1 1 0 01-1-1V4zM6 3a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1h1zM11 3a1 1 0 011 1v4a1 1 0 01-2 0V4a1 1 0 011-1zM10 9a1 1 0 011 1v6a1 1 0 01-2 0v-6a1 1 0 011-1zM15 3a1 1 0 011 1v12a1 1 0 01-2 0V4a1 1 0 011-1z"/></svg>
+                    </button>
+                    <button (click)="openItemForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar Item">✏️</button>
+                    <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir Item">🗑️</button>
+                  }
                 </td>
               </tr>
             } @empty {
               <tr>
-                <td colspan="7" class="p-4 text-center text-slate-500 dark:text-slate-400">Nenhum item encontrado.</td>
+                <td colspan="8" class="p-4 text-center text-slate-500 dark:text-slate-400">Nenhum item encontrado.</td>
               </tr>
             }
           </tbody>
@@ -225,41 +239,40 @@ interface AiSuggestion {
         <div class="md:hidden space-y-3">
             @for(item of paginatedItems(); track item.id) {
               <div class="bg-white dark:bg-secondary rounded-lg p-4 shadow flex gap-3 items-start" [class.bg-sky-50]="selectedItemIds().has(item.id)" [class.dark:bg-sky-900/20]="selectedItemIds().has(item.id)">
-                 <div>
-                    <input 
-                      type="checkbox"
-                      class="h-5 w-5 rounded text-accent focus:ring-accent mt-1"
-                      [checked]="selectedItemIds().has(item.id)"
-                      (change)="toggleSelection(item.id)"
-                    />
-                  </div>
+                <input 
+                  type="checkbox"
+                  class="h-5 w-5 rounded text-accent focus:ring-accent mt-1 flex-shrink-0"
+                  [checked]="selectedItemIds().has(item.id)"
+                  (change)="toggleSelection(item.id)"
+                  [disabled]="authService.isViewer()"
+                />
                 <div class="flex-grow">
                   <div class="flex justify-between items-start">
                     <div>
-                      <p class="font-bold text-slate-800 dark:text-slate-100">{{ item.name }}</p>
+                      <div class="flex items-baseline gap-2">
+                        <p class="font-bold text-slate-800 dark:text-slate-100">{{ item.name }}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">({{ item.unit }})</p>
+                      </div>
                       <p class="text-sm text-slate-500 dark:text-slate-400">{{ item.category }}</p>
                     </div>
-                    <div class="flex items-center space-x-2 flex-shrink-0">
-                      <button (click)="viewLifecycle(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Histórico">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>
-                      </button>
-                       <button (click)="openPrintLabelModal(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Imprimir Etiqueta">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M1 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1H2a1 1 0 01-1-1V4zM6 3a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1h1zM11 3a1 1 0 011 1v4a1 1 0 01-2 0V4a1 1 0 011-1zM10 9a1 1 0 011 1v6a1 1 0 01-2 0v-6a1 1 0 011-1zM15 3a1 1 0 011 1v12a1 1 0 01-2 0V4a1 1 0 011-1z"/></svg>
-                      </button>
-                      <button (click)="openItemForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar">✏️</button>
-                      <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir">🗑️</button>
-                    </div>
+                    @if (!authService.isViewer()) {
+                      <div class="flex items-center space-x-1 flex-shrink-0">
+                        <button (click)="openItemForm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-accent" title="Editar">✏️</button>
+                        <button (click)="openDeleteConfirm(item)" class="p-1 text-slate-500 dark:text-slate-300 hover:text-error" title="Excluir">🗑️</button>
+                      </div>
+                    }
                   </div>
                   <div class="mt-4 grid grid-cols-2 gap-4 items-baseline">
                     <div>
-                      <p class="text-sm text-slate-600 dark:text-slate-300">Fornecedor Pref.: <span class="font-medium">{{ getSupplierName(item.preferredSupplierId) }}</span></p>
                       <p class="text-sm text-slate-500 dark:text-slate-400">Ponto Ressup.: <span class="font-medium">{{ item.reorderPoint }}</span></p>
                     </div>
                     <div class="text-right">
                       <p class="text-lg font-bold" [class.text-error]="item.quantity <= item.reorderPoint">
-                        {{ item.quantity }} <span class="text-sm font-normal text-slate-500 dark:text-slate-400">un.</span>
+                        {{ item.quantity }}
                       </p>
-                      <button (click)="openAdjustmentModal(item)" class="text-xs text-accent dark:text-sky-400 hover:underline cursor-pointer">Ajustar</button>
+                      @if (!authService.isViewer()) {
+                        <button (click)="openAdjustmentModal(item)" class="text-xs text-accent dark:text-sky-400 hover:underline cursor-pointer">Ajustar</button>
+                      }
                     </div>
                   </div>
                 </div>
@@ -285,100 +298,95 @@ interface AiSuggestion {
     <!-- Item Form Modal -->
     @if (isFormOpen()) {
       <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-40">
-        <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
           <h3 class="text-xl font-bold mb-4">{{ currentItem()?.id ? 'Editar' : 'Adicionar' }} Item</h3>
-          <form [formGroup]="itemForm" (ngSubmit)="saveItem()" class="flex-grow overflow-y-auto pr-2">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm mb-1">Nome</label>
-                  <input type="text" formControlName="name" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
-                </div>
-                <div>
-                    <label class="block text-sm mb-1">Categoria</label>
-                    <div class="flex items-start gap-2">
-                        <div class="flex-grow">
-                          <select formControlName="category" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
-                              @for (cat of db().categories; track cat) {
-                                  <option [value]="cat">{{cat}}</option>
-                              }
-                          </select>
-                           @if(aiSuggestions().category) {
-                              <div class="mt-2 text-sm">
-                                <button type="button" (click)="applySuggestion('category')" class="bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200 px-2 py-1 rounded-md hover:bg-sky-200 w-full text-left">
-                                  Usar sugestão: <span class="font-bold">{{ aiSuggestions().category }}</span>
-                                </button>
-                              </div>
-                            }
-                        </div>
-                        <button type="button" [disabled]="!geminiService.isConfigured() || !itemForm.value.name || isAiLoading()" (click)="suggestCategory()" class="p-2 bg-accent rounded disabled:opacity-50 shrink-0" title="Sugerir Categoria com IA">
-                           @if(isAiLoading()) {
-                                <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div>
-                           } @else { <span>✨</span> }
-                        </button>
+          <form [formGroup]="itemForm" (ngSubmit)="saveItem()" class="flex-grow overflow-y-auto pr-2 space-y-4">
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div class="md:col-span-2">
+                <label class="block text-sm mb-1">Nome</label>
+                <input type="text" formControlName="name" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
+              </div>
+              <div>
+                <label class="block text-sm mb-1">Unidade</label>
+                <input type="text" formControlName="unit" placeholder="un., kg, L..." class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
+              </div>
+            </div>
+            <div>
+                <label class="block text-sm mb-1">Categoria</label>
+                <div class="flex items-start gap-2">
+                    <div class="flex-grow">
+                      <select formControlName="category" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
+                          @for (cat of db().categories; track cat) { <option [value]="cat">{{cat}}</option> }
+                      </select>
+                       @if(aiSuggestions().category) {
+                          <div class="mt-2 text-sm">
+                            <button type="button" (click)="applySuggestion('category')" class="bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200 px-2 py-1 rounded-md hover:bg-sky-200 w-full text-left">
+                              Usar sugestão: <span class="font-bold">{{ aiSuggestions().category }}</span>
+                            </button>
+                          </div>
+                        }
                     </div>
+                    <button type="button" [disabled]="!geminiService.isConfigured() || !itemForm.value.name || isAiLoading()" (click)="suggestCategory()" class="p-2 bg-accent rounded disabled:opacity-50 shrink-0" title="Sugerir Categoria com IA">
+                       @if(isAiLoading()) { <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div> } @else { <span>✨</span> }
+                    </button>
                 </div>
-                @if (!currentItem()?.id) {
-                    <div class="md:col-span-2">
-                      <label class="block text-sm mb-1">Qtd. Inicial (Opcional)</label>
-                      <input type="number" formControlName="quantity" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
+            </div>
+            <div>
+              <label class="block text-sm mb-1">Descrição</label>
+               <div class="flex items-start gap-2">
+                    <div class="flex-grow">
+                       <textarea formControlName="description" rows="3" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded"></textarea>
+                        @if(aiSuggestions().description) {
+                          <div class="mt-2 text-sm p-2 bg-slate-100 dark:bg-secondary rounded">
+                              <p class="font-semibold mb-1">Sugestão da IA:</p>
+                              <p class="italic text-slate-600 dark:text-slate-300 mb-2">"{{ aiSuggestions().description }}"</p>
+                              <button type="button" (click)="applySuggestion('description')" class="bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200 px-2 py-1 rounded-md hover:bg-sky-200 text-xs">
+                                Usar esta descrição
+                              </button>
+                          </div>
+                        }
                     </div>
-                }
+                    <button type="button" [disabled]="!geminiService.isConfigured() || !itemForm.value.name || isAiLoading()" (click)="generateDescription()" class="p-2 bg-accent rounded self-start disabled:opacity-50 shrink-0" title="Gerar Descrição com IA">
+                      @if(isAiLoading()) { <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div> } @else { <span>✍️</span> }
+                    </button>
+               </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm mb-1">Preço (R$)</label>
+                <input type="number" formControlName="price" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
+              </div>
+              <div>
+                <label class="block text-sm mb-1">Fornecedor Preferencial</label>
+                <select formControlName="preferredSupplierId" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
+                  <option [ngValue]="null">Nenhum</option>
+                  @for(supplier of db().suppliers; track supplier.id) { <option [value]="supplier.id">{{ supplier.name }}</option> }
+                </select>
+              </div>
+               @if (!currentItem()?.id) {
                 <div>
-                  <label class="block text-sm mb-1">Preço (R$)</label>
-                  <input type="number" formControlName="price" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
+                  <label class="block text-sm mb-1">Qtd. Inicial (Opcional)</label>
+                  <input type="number" formControlName="quantity" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
                 </div>
-                <div>
-                  <label class="block text-sm mb-1">Fornecedor Preferencial</label>
-                  <select formControlName="preferredSupplierId" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
-                    <option [ngValue]="null">Nenhum</option>
-                    @for(supplier of db().suppliers; track supplier.id) {
-                      <option [value]="supplier.id">{{ supplier.name }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="md:col-span-2">
-                  <label class="block text-sm mb-1">Descrição</label>
-                   <div class="flex items-start gap-2">
-                        <div class="flex-grow">
-                           <textarea formControlName="description" rows="3" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded"></textarea>
-                            @if(aiSuggestions().description) {
-                              <div class="mt-2 text-sm p-2 bg-slate-100 dark:bg-secondary rounded">
-                                  <p class="font-semibold mb-1">Sugestão da IA:</p>
-                                  <p class="italic text-slate-600 dark:text-slate-300 mb-2">"{{ aiSuggestions().description }}"</p>
-                                  <button type="button" (click)="applySuggestion('description')" class="bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200 px-2 py-1 rounded-md hover:bg-sky-200 text-xs">
-                                    Usar esta descrição
-                                  </button>
-                              </div>
-                            }
-                        </div>
-                        <button type="button" [disabled]="!geminiService.isConfigured() || !itemForm.value.name || isAiLoading()" (click)="generateDescription()" class="p-2 bg-accent rounded self-start disabled:opacity-50 shrink-0" title="Gerar Descrição com IA">
-                          @if(isAiLoading()) {
-                                <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div>
-                           } @else { <span>✍️</span> }
-                        </button>
-                   </div>
-                </div>
-                <div class="md:col-span-2">
-                    <label class="block text-sm mb-1">Ponto de Ressuprimento</label>
-                    <div class="flex items-start gap-2">
-                        <div class="flex-grow">
-                           <input type="number" formControlName="reorderPoint" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
-                           @if(aiSuggestions().reorderPoint; as rp) {
-                                <div class="mt-2 text-sm p-2 bg-slate-100 dark:bg-secondary rounded">
-                                    <p class="font-semibold mb-1">Sugestão da IA: <button type="button" (click)="applySuggestion('reorderPoint')" class="font-bold text-accent hover:underline">{{ rp.suggestion }}</button></p>
-                                    <p class="text-xs text-slate-500 dark:text-slate-400">{{ rp.reasoning }}</p>
-                                </div>
-                            }
-                        </div>
-                        <button type="button" [disabled]="!geminiService.isConfigured() || !currentItem()?.id || isAiLoading()" (click)="suggestReorderPoint()" class="p-2 bg-accent rounded disabled:opacity-50 shrink-0" title="Sugerir Ponto de Ressuprimento com IA">
-                           @if(isAiLoading()) {
-                                <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div>
-                           } @else {
-                                <span>🧠</span>
-                           }
-                        </button>
-                    </div>
-                </div>
+              }
+               <div>
+                  <label class="block text-sm mb-1">Ponto de Ressuprimento</label>
+                  <div class="flex items-start gap-2">
+                      <div class="flex-grow">
+                        <input type="number" formControlName="reorderPoint" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
+                      </div>
+                      <button type="button" [disabled]="!geminiService.isConfigured() || !currentItem()?.id || isAiLoading()" (click)="suggestReorderPoint()" class="p-2 bg-accent rounded disabled:opacity-50 shrink-0" title="Sugerir Ponto de Ressuprimento com IA">
+                        @if(isAiLoading()) { <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div> } @else { <span>🧠</span> }
+                      </button>
+                  </div>
+                   @if(aiSuggestions().reorderPoint; as rp) {
+                      <div class="mt-2 text-sm p-2 bg-slate-100 dark:bg-secondary rounded">
+                          <p class="font-semibold mb-1">Sugestão da IA: <button type="button" (click)="applySuggestion('reorderPoint')" class="font-bold text-accent hover:underline">{{ rp.suggestion }}</button></p>
+                          <p class="text-xs text-slate-500 dark:text-slate-400">{{ rp.reasoning }}</p>
+                      </div>
+                  }
+              </div>
             </div>
             
             <div class="flex justify-end gap-4 mt-6 pt-4 border-t border-slate-200 dark:border-secondary">
@@ -442,9 +450,10 @@ interface AiSuggestion {
             <table class="w-full text-left text-sm table-fixed">
               <thead class="sticky top-0 bg-slate-100 dark:bg-secondary">
                 <tr>
-                  <th class="p-2 w-[18%]">Nome*</th>
+                  <th class="p-2 w-[16%]">Nome*</th>
+                  <th class="p-2 w-[8%]">Unidade*</th>
                   <th class="p-2 w-[12%]">Categoria*</th>
-                  <th class="p-2 w-[22%]">Descrição</th>
+                  <th class="p-2 w-[20%]">Descrição</th>
                   <th class="p-2 w-[8%]">Preço</th>
                   <th class="p-2 w-[12%]">Fornecedor (CNPJ)</th>
                   <th class="p-2 w-[8%]">Ponto Ressup.</th>
@@ -459,6 +468,7 @@ interface AiSuggestion {
                       <input type="text" formControlName="name" (paste)="onBatchPaste($event, $index, 'name')" class="w-full bg-transparent p-1 rounded focus:outline-none focus:bg-slate-100 dark:focus:bg-secondary">
                       @if(itemGroup.errors?.message) { <small class="text-error px-1">{{itemGroup.errors.message}}</small> }
                     </td>
+                    <td class="p-1"><input type="text" formControlName="unit" (paste)="onBatchPaste($event, $index, 'unit')" class="w-full bg-transparent p-1 rounded focus:outline-none focus:bg-slate-100 dark:focus:bg-secondary"></td>
                     <td class="p-1"><input type="text" formControlName="category" (paste)="onBatchPaste($event, $index, 'category')" list="category-datalist" class="w-full bg-transparent p-1 rounded focus:outline-none focus:bg-slate-100 dark:focus:bg-secondary"></td>
                     <td class="p-1"><input type="text" formControlName="description" (paste)="onBatchPaste($event, $index, 'description')" class="w-full bg-transparent p-1 rounded focus:outline-none focus:bg-slate-100 dark:focus:bg-secondary"></td>
                     <td class="p-1"><input type="number" formControlName="price" (paste)="onBatchPaste($event, $index, 'price')" min="0" step="0.01" class="w-full bg-transparent p-1 rounded focus:outline-none focus:bg-slate-100 dark:focus:bg-secondary"></td>
@@ -497,7 +507,7 @@ interface AiSuggestion {
       <div class="fixed inset-0 bg-black bg-opacity-70 flex justify-center items-center z-50">
         <div class="bg-white dark:bg-primary p-6 rounded-lg shadow-xl w-full max-w-md">
             <h3 class="text-xl font-bold">Ajustar Estoque: {{ item.name }}</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Estoque atual: {{ item.quantity }}</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Estoque atual: {{ item.quantity }} {{ item.unit }}</p>
             <form [formGroup]="adjustmentForm" (ngSubmit)="saveAdjustment()">
               <div class="space-y-4">
                   <input type="number" formControlName="newQuantity" placeholder="Nova Quantidade" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded" />
@@ -585,6 +595,7 @@ export class InventoryComponent implements OnDestroy {
   private dbService = inject(DatabaseService);
   private toastService = inject(ToastService);
   geminiService = inject(GeminiService);
+  authService = inject(AuthService);
   private fb = inject(FormBuilder);
   db = this.dbService.db;
 
@@ -613,7 +624,7 @@ export class InventoryComponent implements OnDestroy {
   itemForAdjustment = signal<Item | null>(null);
   isImageRecognitionOpen = signal(false);
   isInvoiceRecognitionOpen = signal(false);
-
+  
   itemToPrintLabel = signal<Item | null>(null);
   printArea = viewChild<ElementRef<HTMLDivElement>>('printArea');
   barcodeElement = viewChild<ElementRef<SVGElement>>('barcodeElement');
@@ -678,11 +689,6 @@ export class InventoryComponent implements OnDestroy {
     // --- End Reactive Filtering Setup ---
 
     effect(() => {
-      this.paginatedItems();
-      this.selectedItemIds.set(new Set<string>());
-    }, { allowSignalWrites: true });
-
-    effect(() => {
       const item = this.itemToPrintLabel();
       const element = this.barcodeElement();
       if (item && element) {
@@ -732,6 +738,7 @@ export class InventoryComponent implements OnDestroy {
   private createBatchItemGroup(): FormGroup {
     return this.fb.group({
       name: ['', Validators.required],
+      unit: ['un.', Validators.required],
       category: ['', Validators.required],
       description: [''],
       price: [0, Validators.min(0)],
@@ -889,6 +896,7 @@ export class InventoryComponent implements OnDestroy {
     this.currentItem.set(item);
     this.itemForm = this.fb.group({
       name: [item?.name ?? initialData.name ?? '', Validators.required],
+      unit: [item?.unit ?? initialData.unit ?? 'un.', Validators.required],
       category: [item?.category ?? initialData.category ?? this.db().categories[0] ?? '', Validators.required],
       price: [item?.price ?? initialData.price ?? 0, [Validators.required, Validators.min(0)]],
       description: [item?.description ?? initialData.description ?? ''],
@@ -979,9 +987,9 @@ export class InventoryComponent implements OnDestroy {
       this.aiSuggestions.update(s => ({ ...s, reorderPoint: null }));
     }
   }
-
+  
   downloadCsvTemplate() {
-    const headers = ['Nome', 'Categoria', 'Descrição', 'Preço', 'Fornecedor_CNPJ', 'Ponto_Ressuprimento', 'Quantidade'];
+    const headers = ['Nome', 'Unidade', 'Categoria', 'Descrição', 'Preço', 'Fornecedor_CNPJ', 'Ponto_Ressuprimento', 'Quantidade'];
     const csvContent = headers.join(',') + '\n';
     const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -1014,7 +1022,7 @@ export class InventoryComponent implements OnDestroy {
       return;
     }
     const headers = lines[0].split(',').map(h => h.trim());
-    const expectedHeaders = ['Nome', 'Categoria', 'Descrição', 'Preço', 'Fornecedor_CNPJ', 'Ponto_Ressuprimento', 'Quantidade'];
+    const expectedHeaders = ['Nome', 'Unidade', 'Categoria', 'Descrição', 'Preço', 'Fornecedor_CNPJ', 'Ponto_Ressuprimento', 'Quantidade'];
     
     // Basic header validation
     if (expectedHeaders.some((h, i) => h.toLowerCase() !== headers[i]?.toLowerCase())) {
@@ -1029,11 +1037,12 @@ export class InventoryComponent implements OnDestroy {
         const values = line.split(',');
         const rowData: any = {};
         expectedHeaders.forEach((header, index) => {
-            const keyMap: any = { 'Nome': 'name', 'Categoria': 'category', 'Descrição': 'description', 'Preço': 'price', 'Fornecedor_CNPJ': 'supplierCnpj', 'Ponto_Ressuprimento': 'reorderPoint', 'Quantidade': 'quantity' };
+            const keyMap: any = { 'Nome': 'name', 'Unidade': 'unit', 'Categoria': 'category', 'Descrição': 'description', 'Preço': 'price', 'Fornecedor_CNPJ': 'supplierCnpj', 'Ponto_Ressuprimento': 'reorderPoint', 'Quantidade': 'quantity' };
             rowData[keyMap[header]] = values[index]?.trim() || '';
         });
         this.batchItemsArray.push(this.fb.group({
             name: [rowData.name, Validators.required],
+            unit: [rowData.unit || 'un.', Validators.required],
             category: [rowData.category, Validators.required],
             description: [rowData.description],
             price: [parseFloat(rowData.price) || 0],
@@ -1051,7 +1060,7 @@ export class InventoryComponent implements OnDestroy {
     const pasteData = event.clipboardData?.getData('text') || '';
     const rows = pasteData.split('\n').filter(r => r.trim()).map(row => row.split('\t'));
     
-    const fields: (keyof ReturnType<typeof this.createBatchItemGroup>['value'])[] = ['name', 'category', 'description', 'price', 'supplierCnpj', 'reorderPoint', 'quantity'];
+    const fields: (keyof ReturnType<typeof this.createBatchItemGroup>['value'])[] = ['name', 'unit', 'category', 'description', 'price', 'supplierCnpj', 'reorderPoint', 'quantity'];
     
     const startFieldIndex = fields.indexOf(startField as any);
 
@@ -1104,6 +1113,7 @@ export class InventoryComponent implements OnDestroy {
 
       itemsToCreate.push({
         name: itemValue.name,
+        unit: itemValue.unit,
         category: itemValue.category,
         description: itemValue.description || '',
         price: Number(itemValue.price) || 0,
@@ -1148,10 +1158,11 @@ export class InventoryComponent implements OnDestroy {
     this.navigateTo.emit('item_lifecycle');
   }
 
-  handleItemRecognized(data: { name: string; category: string; description: string }) {
+  handleItemRecognized(data: { name: string; unit: string; category: string; description: string }) {
     this.isImageRecognitionOpen.set(false);
     this.openItemForm(null, {
       name: data.name,
+      unit: data.unit,
       category: data.category,
       description: data.description,
     });
@@ -1172,6 +1183,7 @@ export class InventoryComponent implements OnDestroy {
 
     const batchItemControls = parsedItems.map(item => this.fb.group({
         name: [item.name, Validators.required],
+        unit: ['un.', Validators.required],
         category: ['', Validators.required],
         description: [''],
         price: [item.price, [Validators.required, Validators.min(0)]],
@@ -1259,7 +1271,6 @@ export class InventoryComponent implements OnDestroy {
       (printAreaContainer as HTMLElement).style.height = originalHeight;
 
       const imgData = canvas.toDataURL('image/png');
-      // FIX: Standardize jsPDF instantiation for consistency.
       const pdf = new jspdf.jsPDF({
         orientation: 'p',
         unit: 'mm',

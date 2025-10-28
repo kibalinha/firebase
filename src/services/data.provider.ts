@@ -5,7 +5,7 @@ import { AlmoxarifadoDB, Item, Movement, AuditLog, Technician, Supplier, Purchas
 // Define um tipo para as chaves de coleção que contêm entidades com um 'id'.
 export type CollectionWithId = keyof Omit<AlmoxarifadoDB, 'categories' | 'auditLogs'>;
 
-// FIX: Add Kit and Reservation to the union type.
+// FIX: Add Kit, Reservation, and User to the union type.
 type EntityWithId = Item | Technician | Supplier | Movement | PurchaseOrder | PickingList | RedShelfItem | Kit | Reservation | User;
 
 

@@ -1,21 +1,16 @@
-
-
-
-
-import { Injectable, signal, inject, computed } from '@angular/core';
+import { Injectable, signal, inject, computed, Injector } from '@angular/core';
 import { 
     AlmoxarifadoDB, Item, Movement, Technician, Supplier, AuditLog, View, 
     RedShelfItem, PurchaseOrder, ItemWithAvailableStock, PickingList,
-    PurchaseOrderStatus, PickingListStatus, Kit, Reservation, ReservationStatus
+    PurchaseOrderStatus, PickingListStatus, Kit, Reservation, ReservationStatus, User
 } from '../models';
 import { DataProvider, CreationPayload } from './data.provider';
 import { ToastService } from './toast.service';
+import { AuthService } from './auth.service';
 
 type CollectionWithId = keyof Omit<AlmoxarifadoDB, 'categories' | 'auditLogs'>;
-// FIX: Add Kit and Reservation to the union type.
-type EntityWithId = Item | Technician | Supplier | Movement | RedShelfItem | PurchaseOrder | PickingList | Kit | Reservation;
+type EntityWithId = Item | Technician | Supplier | Movement | RedShelfItem | PurchaseOrder | PickingList | Kit | Reservation | User;
 
-// FIX: Exported KitWithDetails interface for use in other components.
 export interface KitWithDetails extends Kit {
   availableQuantity: number;
 }
@@ -24,11 +19,19 @@ export interface KitWithDetails extends Kit {
 export class DatabaseService {
   private provider = inject(DataProvider);
   private toastService = inject(ToastService);
+  private injector = inject(Injector);
+  private _authService: AuthService | null = null;
+
+  private get authService(): AuthService {
+    if (!this._authService) {
+      this._authService = this.injector.get(AuthService);
+    }
+    return this._authService;
+  }
 
   db = signal<AlmoxarifadoDB>({
       items: [], redShelfItems: [], technicians: [], suppliers: [],
       movements: [], categories: [], auditLogs: [], purchaseOrders: [], pickingLists: [],
-      // FIX: Added new models to initial DB state.
       kits: [], reservations: [], users: []
   });
 
@@ -40,7 +43,6 @@ export class DatabaseService {
     const allItems = this.db().items;
     const reservedQuantities = new Map<string, number>();
 
-    // Calculate reserved quantities from pending reservations
     this.db().reservations
       .filter(r => r.status === ReservationStatus.Pendente)
       .forEach(r => {
@@ -55,9 +57,7 @@ export class DatabaseService {
     }));
   });
   
-  // FIX: Added computed signal for kits with calculated available quantities.
   kitsWithDetails = computed((): KitWithDetails[] => {
-    // FIX: Explicitly type the Map to ensure correct type inference for its values.
     const itemsMap: Map<string, ItemWithAvailableStock> = new Map(this.itemsWithAvailableStock().map(i => [i.id, i]));
     const allKits = this.db().kits;
 
@@ -94,8 +94,8 @@ export class DatabaseService {
   }
 
   async replaceDbState(newData: AlmoxarifadoDB): Promise<void> {
-    await this.provider.replaceAllData(newData); // Persiste os novos dados
-    this.db.set(newData); // Atualiza o estado reativo da aplicação
+    await this.provider.replaceAllData(newData);
+    this.db.set(newData);
     await this.logAction('SYSTEM_RESTORE', 'Banco de dados restaurado a partir de um arquivo de backup.');
   }
 
@@ -104,8 +104,14 @@ export class DatabaseService {
     this.lifecycleReturnView.set(returnView);
   }
 
-  async logAction(action: string, details: string, user: string = 'Sistema'): Promise<void> {
-    const newLog = await this.provider.logAction(action, details, user);
+  private getCurrentUserIdentifier(): string {
+    const user = this.authService.currentUser();
+    return user?.name || user?.username || 'Sistema';
+  }
+
+  async logAction(action: string, details: string, user?: string): Promise<void> {
+    const logUser = user || this.getCurrentUserIdentifier();
+    const newLog = await this.provider.logAction(action, details, logUser);
     this.db.update(db => ({
       ...db,
       auditLogs: [newLog, ...db.auditLogs]
@@ -141,11 +147,13 @@ export class DatabaseService {
   
   async saveItem(itemData: Omit<Item, 'id' | 'createdAt' | 'quantity'> & { id?: string; quantity?: number }, isRedShelf: boolean) {
     const collection = isRedShelf ? 'redShelfItems' : 'items';
+    const user = this.getCurrentUserIdentifier();
 
     if (itemData.id) {
         const allItems = isRedShelf ? this.db().redShelfItems : this.db().items;
         const existingItem = allItems.find(i => i.id === itemData.id);
         if (!existingItem) throw new Error('Item a ser atualizado não encontrado');
+        
         const updatedItemData = { ...existingItem, ...itemData };
         const updatedItem = await this.provider.updateItem(collection, updatedItemData);
 
@@ -154,11 +162,9 @@ export class DatabaseService {
             return { ...db, [collection]: currentCollection };
         });
         
-        if (isRedShelf) {
-            await this.logAction('UPDATE_ITEM', `Item na Prateleira Vermelha atualizado: ${(updatedItem as RedShelfItem).name}`);
-        } else {
-            await this.logAction('UPDATE_ITEM', `Item atualizado: ${(updatedItem as Item).name}`);
-        }
+        const location = isRedShelf ? 'na Prateleira Vermelha' : 'no Inventário';
+        await this.logAction('UPDATE_ITEM', `Item '${updatedItem.name}' (ID: ${updatedItem.id}) atualizado ${location}.`, user);
+
     } else {
         const newItemPayload: any = { ...itemData };
         if (collection === 'items' && typeof newItemPayload.quantity === 'undefined') {
@@ -167,11 +173,8 @@ export class DatabaseService {
         const newItem = await this.provider.addItem<Item | RedShelfItem>(collection, newItemPayload);
         this.db.update(db => ({ ...db, [collection]: [...db[collection], newItem] }));
         
-        if (isRedShelf) {
-            await this.logAction('CREATE_ITEM', `Item na Prateleira Vermelha criado: ${(newItem as RedShelfItem).name}`);
-        } else {
-            await this.logAction('CREATE_ITEM', `Item criado: ${(newItem as Item).name}`);
-        }
+        const location = isRedShelf ? 'na Prateleira Vermelha' : 'no Inventário';
+        await this.logAction('CREATE_ITEM', `Item '${newItem.name}' (ID: ${newItem.id}) criado ${location}.`, user);
     }
   }
 
@@ -181,9 +184,8 @@ export class DatabaseService {
     const item = allItems.find(i => i.id === id);
     if (item) {
         await this.deleteItem(collection, id);
-        // FIX: Simplified expression to avoid type narrowing issues with 'never' type.
         const itemName = item.name;
-        await this.logAction('DELETE_ITEM', `Item removido: ${itemName}`);
+        await this.logAction('DELETE_ITEM', `Item '${itemName}' (ID: ${id}) removido.`);
     }
   }
 
@@ -199,8 +201,7 @@ export class DatabaseService {
         ...db,
         [collection]: (db[collection] as (Item|RedShelfItem)[]).filter(item => !idsToDelete.has(item.id))
       }));
-      // FIX: Simplified expression to avoid type narrowing issues with 'never' type.
-      const itemNames = itemsToDelete.map(i => i.name).join(', ');
+      const itemNames = itemsToDelete.map(i => `'${i.name}' (ID: ${i.id})`).join(', ');
       await this.logAction('DELETE_MULTIPLE_ITEMS', `${itemsToDelete.length} itens removidos: ${itemNames}`);
     }
   }
@@ -227,14 +228,20 @@ export class DatabaseService {
               movements: [newMovement, ...db.movements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             };
         });
-        const allItems = [...this.db().items, ...this.db().redShelfItems];
-        const item = allItems.find(i => i.id === movementData.itemId);
-        let itemName = item?.name || 'Item desconhecido';
+        
+        const itemName = 'name' in updatedItem ? updatedItem.name : 'Item desconhecido';
+        let details: string;
 
-        const technician = movementData.technicianId ? this.db().technicians.find(t => t.id === movementData.technicianId) : null;
-        const details = movementData.type === 'in'
-            ? `Entrada de ${movementData.quantity}x ${itemName}`
-            : `Saída de ${movementData.quantity}x ${itemName} | Técnico: ${technician?.name || 'N/A'}`;
+        if (movementData.type === 'in') {
+            details = `Entrada de ${movementData.quantity}x '${itemName}' (ID: ${updatedItem.id}). Novo estoque: ${updatedItem.quantity}.`;
+        } else {
+            const technician = movementData.technicianId ? this.db().technicians.find(t => t.id === movementData.technicianId) : null;
+            details = `Saída de ${movementData.quantity}x '${itemName}' (ID: ${updatedItem.id}) por '${technician?.name || 'N/A'}'. Novo estoque: ${updatedItem.quantity}.`;
+        }
+        
+        if (movementData.notes) {
+            details += ` | Notas: "${movementData.notes}"`;
+        }
         await this.logAction(movementData.type === 'in' ? 'ENTRADA_ITEM' : 'SAIDA_ITEM', details);
     }
     return { success: result.success, message: result.message };
@@ -259,14 +266,17 @@ export class DatabaseService {
         movements: [newMovement, ...db.movements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       }));
 
-      // FIX: Simplified expression to avoid type narrowing issues with 'never' type.
       const itemName = item.name;
-      await this.logAction('ADJUST_ITEM', `Ajuste de estoque para ${itemName}: de ${oldQuantity} para ${newQuantity}. Motivo: ${notes}`);
+      await this.logAction('ADJUST_ITEM', `Ajuste de estoque para '${itemName}' (ID: ${itemId}): de ${oldQuantity} para ${newQuantity}. Motivo: ${notes}`);
       this.toastService.addToast('Estoque ajustado com sucesso!', 'success');
 
     } catch (error: any) {
       this.toastService.addToast(`Falha no ajuste: ${error.message}`, 'error');
     }
+  }
+
+  private getItemName(itemId: string): string {
+    return this.db().items.find(i => i.id === itemId)?.name || 'Item Desconhecido';
   }
 
   async addCategory(categoryName: string): Promise<void> {
@@ -311,7 +321,6 @@ export class DatabaseService {
             quantity: ri.quantityReceived,
             date: new Date().toISOString(),
             notes: `Recebimento da Ordem de Compra ${po.poNumber}`,
-            // FIX: Added missing 'technicianId' property. For 'in' movements from a PO, this should be null.
             technicianId: null,
         }));
     
@@ -337,15 +346,11 @@ export class DatabaseService {
 
     const newStatus = allItemsFullyReceived ? PurchaseOrderStatus.Recebido : PurchaseOrderStatus.RecebidoParcialmente;
 
-    const updatedPO: PurchaseOrder = {
-        ...po,
-        items: updatedPoItems,
-        status: newStatus
-    };
-
+    const updatedPO: PurchaseOrder = { ...po, items: updatedPoItems, status: newStatus };
     await this.updateItem('purchaseOrders', updatedPO);
 
-    await this.logAction('RECEIVE_PO', `Itens recebidos para a OC ${po.poNumber}. Novo status: ${newStatus}.`);
+    const itemsDetails = receivedItems.filter(i => i.quantityReceived > 0).map(i => `${i.quantityReceived}x '${this.getItemName(i.itemId)}'`).join(', ');
+    await this.logAction('RECEIVE_PO', `Recebimento para OC ${po.poNumber}: ${itemsDetails}. Novo status: ${newStatus}.`);
     this.toastService.addToast('Itens recebidos e estoque atualizado!', 'success');
   }
 
@@ -354,7 +359,6 @@ export class DatabaseService {
     if (!list) throw new Error('Lista de coleta não encontrada.');
     if (list.status === PickingListStatus.Concluida) throw new Error('Esta lista já foi concluída.');
 
-    // Check stock for all items first
     for (const pickedItem of pickedItems) {
         if (pickedItem.pickedQuantity > 0) {
             const item = this.itemsWithAvailableStock().find(i => i.id === pickedItem.itemId);
@@ -364,7 +368,6 @@ export class DatabaseService {
         }
     }
 
-    // Process movements
     for (const pickedItem of pickedItems) {
         if (pickedItem.pickedQuantity > 0) {
             await this.addMovement({
@@ -389,20 +392,18 @@ export class DatabaseService {
     });
     
     const newStatus = allItemsFullyPicked ? PickingListStatus.Concluida : PickingListStatus.EmColeta;
-
-    // Update list status and picked quantities
     const updatedList: PickingList = { ...list, items: updatedListItems, status: newStatus };
     await this.updateItem('pickingLists', updatedList);
-    await this.logAction('PROCESS_PICKING_LIST', `Lista de coleta "${list.name}" processada. Novo status: ${newStatus}.`);
+
+    const itemsDetails = pickedItems.filter(i => i.pickedQuantity > 0).map(i => `${i.pickedQuantity}x '${this.getItemName(i.itemId)}'`).join(', ');
+    await this.logAction('PROCESS_PICKING_LIST', `Coleta da lista "${list.name}" processada: ${itemsDetails}. Novo status: ${newStatus}.`);
   }
   
-  // FIX: Added method to fulfill item reservations.
   async fulfillReservation(reservationId: string): Promise<void> {
     const reservation = this.db().reservations.find(r => r.id === reservationId);
     if (!reservation) throw new Error('Reserva não encontrada.');
     if (reservation.status !== ReservationStatus.Pendente) throw new Error('Apenas reservas pendentes podem ser atendidas.');
 
-    // Check stock for all items first
     for (const resItem of reservation.items) {
       const item = this.itemsWithAvailableStock().find(i => i.id === resItem.itemId);
       if (!item || item.availableStock < resItem.quantity) {
@@ -410,7 +411,6 @@ export class DatabaseService {
       }
     }
 
-    // Process movements
     for (const resItem of reservation.items) {
       await this.addMovement({
         itemId: resItem.itemId,
@@ -422,9 +422,10 @@ export class DatabaseService {
       });
     }
 
-    // Update reservation status
     const updatedReservation: Reservation = { ...reservation, status: ReservationStatus.Atendida };
     await this.updateItem('reservations', updatedReservation);
-    await this.logAction('FULFILL_RESERVATION', `Reserva "${reservation.name}" atendida.`);
+    
+    const itemsDetails = reservation.items.map(i => `${i.quantity}x '${this.getItemName(i.itemId)}'`).join(', ');
+    await this.logAction('FULFILL_RESERVATION', `Reserva "${reservation.name}" atendida: ${itemsDetails}.`);
   }
 }

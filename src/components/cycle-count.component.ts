@@ -6,6 +6,7 @@ import { GeminiService } from '../services/gemini.service';
 import { ToastService } from '../services/toast.service';
 import { Item } from '../models';
 import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-cycle-count',
@@ -28,13 +29,15 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
                         </svg>
                         <p class="text-lg font-semibold">Pronto para iniciar uma nova contagem?</p>
                         <p class="text-slate-500 dark:text-slate-400 mt-2 max-w-md">A IA irá sugerir um conjunto de itens para contagem, focando nos mais relevantes para a operação.</p>
-                        <button (click)="startNewCount()" [disabled]="isLoading()" class="mt-6 bg-accent text-white px-6 py-3 rounded-md hover:bg-info transition-colors flex items-center justify-center w-52 disabled:opacity-50">
-                            @if(isLoading()) {
-                                <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div>
-                            } @else {
-                                <span>Iniciar Nova Contagem</span>
-                            }
-                        </button>
+                        @if (!authService.isViewer()) {
+                          <button (click)="startNewCount()" [disabled]="isLoading()" class="mt-6 bg-accent text-white px-6 py-3 rounded-md hover:bg-info transition-colors flex items-center justify-center w-52 disabled:opacity-50">
+                              @if(isLoading()) {
+                                  <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div>
+                              } @else {
+                                  <span>Iniciar Nova Contagem</span>
+                              }
+                          </button>
+                        }
                     </div>
                 }
                 @case('counting') {
@@ -64,7 +67,7 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
                                     @for(control of itemsToCountArray.controls; track $index; let i = $index) {
                                         <tr [formGroupName]="$index" class="border-b dark:border-slate-700" #itemRow>
                                             <td class="p-2">{{ itemsToCount()[i].name }}</td>
-                                            <td class="p-2 text-center">{{ itemsToCount()[i].quantity }}</td>
+                                            <td class="p-2 text-center">{{ itemsToCount()[i].quantity }} {{ itemsToCount()[i].unit }}</td>
                                             <td class="p-2">
                                                 <input type="number" formControlName="countedQuantity" min="0" class="w-full bg-slate-100 dark:bg-secondary p-2 rounded">
                                             </td>
@@ -78,7 +81,7 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
                                 @for(control of itemsToCountArray.controls; track $index; let i = $index) {
                                     <div [formGroupName]="$index" class="bg-slate-50 dark:bg-secondary p-4 rounded-lg" #itemRow>
                                         <p class="font-bold text-slate-800 dark:text-slate-100">{{ itemsToCount()[i].name }}</p>
-                                        <p class="text-sm text-slate-500 dark:text-slate-400">Em sistema: {{ itemsToCount()[i].quantity }}</p>
+                                        <p class="text-sm text-slate-500 dark:text-slate-400">Em sistema: {{ itemsToCount()[i].quantity }} {{ itemsToCount()[i].unit }}</p>
                                         <div class="mt-2">
                                             <label class="block text-sm font-medium mb-1">Qtd. Contada</label>
                                             <input type="number" formControlName="countedQuantity" min="0" class="w-full bg-white dark:bg-primary p-2 rounded">
@@ -113,7 +116,9 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
                                         <td class="p-2">{{ item.name }}</td>
                                         <td class="p-2 text-center">{{ item.systemQuantity }}</td>
                                         <td class="p-2 text-center">{{ item.countedQuantity }}</td>
-                                        <td class="p-2 text-center font-bold" [class.text-red-500]="item.difference < 0" [class.text-green-500]="item.difference > 0">
+                                        <td class="p-2 text-center font-bold" 
+                                            [class.text-red-500]="item.difference < 0" 
+                                            [class.text-green-500]="item.difference > 0">
                                             {{ item.difference > 0 ? '+' : '' }}{{ item.difference }}
                                         </td>
                                     </tr>
@@ -126,7 +131,7 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
                                 @if(isLoading()) {
                                     <div class="w-5 h-5 border-2 border-slate-400 border-t-white rounded-full animate-spin"></div>
                                 } @else {
-                                    <span>Confirmar Ajustes</span>
+                                    <span>Confirmar e Ajustar</span>
                                 }
                             </button>
                         </div>
@@ -134,8 +139,7 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
                 }
             }
         </div>
-
-        <!-- Scanner Modal -->
+         <!-- Scanner Modal -->
         @if (isScannerOpen()) {
           <div class="fixed inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-50 p-4">
             <div class="relative w-full max-w-2xl bg-black rounded-lg overflow-hidden">
@@ -157,171 +161,173 @@ import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library';
   `
 })
 export class CycleCountComponent implements OnDestroy {
-  private dbService = inject(DatabaseService);
-  private geminiService = inject(GeminiService);
-  private toastService = inject(ToastService);
-  private fb = inject(FormBuilder);
+    private dbService = inject(DatabaseService);
+    private geminiService = inject(GeminiService);
+    private toastService = inject(ToastService);
+    private fb = inject(FormBuilder);
+    authService = inject(AuthService);
 
-  step = signal<'idle' | 'counting' | 'review'>('idle');
-  isLoading = signal(false);
-  
-  itemsToCount = signal<Item[]>([]);
-  suggestionReason = signal('');
-  discrepancies = signal<{id: string, name: string, systemQuantity: number, countedQuantity: number, difference: number}[]>([]);
-  
-  countForm: FormGroup = this.fb.group({ itemsToCount: this.fb.array([]) });
+    step = signal<'idle' | 'counting' | 'review'>('idle');
+    isLoading = signal(false);
+    
+    suggestionReason = signal('');
+    itemsToCount = signal<Item[]>([]);
+    discrepancies = signal<{id: string, name: string, systemQuantity: number, countedQuantity: number, difference: number}[]>([]);
+    
+    countForm!: FormGroup;
 
-  isScannerOpen = signal(false);
-  scannerError = signal<string | null>(null);
-  private codeReader: BrowserMultiFormatReader | null = null;
-  scannerVideoElement = viewChild<ElementRef<HTMLVideoElement>>('scannerVideo');
-  
-  get itemsToCountArray(): FormArray {
-    return this.countForm.get('itemsToCount') as FormArray;
-  }
+    isScannerOpen = signal(false);
+    scannerError = signal<string | null>(null);
+    private codeReader: BrowserMultiFormatReader | null = null;
+    scannerVideoElement = viewChild<ElementRef<HTMLVideoElement>>('scannerVideo');
 
-  ngOnDestroy() {
-      this.stopScanner();
-  }
-
-  async startNewCount() {
-    if (!this.geminiService.isConfigured()) {
-        this.toastService.addToast('Serviço de IA não configurado. Vá para Configurações.', 'error');
-        return;
+    get itemsToCountArray(): FormArray {
+        return this.countForm.get('itemsToCount') as FormArray;
     }
-    this.isLoading.set(true);
-    try {
-        const allItems = this.dbService.db().items;
-        const result = await this.geminiService.suggestCycleCountItems(allItems);
-        if (result && result.itemsToCount.length > 0) {
-            const allMainItems = this.dbService.db().items;
-            this.itemsToCount.set(
-              result.itemsToCount
-                .map(suggestedItem => allMainItems.find(i => i.id === suggestedItem.id))
-                .filter((item): item is Item => !!item)
-            );
-            this.suggestionReason.set(result.reasoning);
-            this.setupCountForm();
-            this.step.set('counting');
-        } else {
-            this.toastService.addToast('Não foi possível sugerir itens para contagem.', 'info');
+
+    ngOnDestroy() {
+        this.stopScanner();
+    }
+    
+    async startNewCount() {
+        if (!this.geminiService.isConfigured()) {
+            this.toastService.addToast('Funcionalidade de IA não configurada.', 'error');
+            return;
         }
-    } finally {
-        this.isLoading.set(false);
+        this.isLoading.set(true);
+        try {
+            const result = await this.geminiService.suggestCycleCountItems(this.dbService.db().items);
+            if (result && result.itemsToCount.length > 0) {
+                this.suggestionReason.set(result.reasoning);
+                const itemIds = new Set(result.itemsToCount.map(i => i.id));
+                const items = this.dbService.db().items.filter(i => itemIds.has(i.id));
+                this.itemsToCount.set(items);
+                this.setupCountForm();
+                this.step.set('counting');
+            } else {
+                this.toastService.addToast('IA não conseguiu sugerir itens para contagem.', 'info');
+            }
+        } catch(e) {
+            this.toastService.addToast('Erro ao obter sugestões da IA.', 'error');
+        } finally {
+            this.isLoading.set(false);
+        }
     }
-  }
 
-  setupCountForm() {
-    const controls = this.itemsToCount().map(item => 
-      this.fb.group({
-        id: [item.id],
-        countedQuantity: [null, [Validators.required, Validators.min(0)]]
-      })
-    );
-    this.countForm = this.fb.group({ itemsToCount: this.fb.array(controls) });
-  }
-
-  reviewCount() {
-    const countedValues = this.itemsToCountArray.value;
-    const discrepancies = this.itemsToCount().map((item, index) => {
-      const counted = countedValues[index].countedQuantity;
-      return {
-        id: item.id,
-        name: item.name,
-        systemQuantity: item.quantity,
-        countedQuantity: counted,
-        difference: counted - item.quantity,
-      };
-    }).filter(d => d.difference !== 0);
-
-    this.discrepancies.set(discrepancies);
-    this.step.set('review');
-  }
-
-  async confirmAdjustments() {
-    this.isLoading.set(true);
-    try {
-      for (const discrepancy of this.discrepancies()) {
-        await this.dbService.adjustItemQuantity(
-          discrepancy.id,
-          discrepancy.countedQuantity,
-          `Ajuste via Contagem Cíclica. Contado: ${discrepancy.countedQuantity}, Sistema: ${discrepancy.systemQuantity}.`,
-          false // Cycle count is only for main inventory
+    setupCountForm() {
+        const controls = this.itemsToCount().map(item => 
+          this.fb.group({
+            id: [item.id],
+            countedQuantity: [null, [Validators.required, Validators.min(0)]]
+          })
         );
-      }
-      this.toastService.addToast('Ajustes de estoque concluídos com sucesso!', 'success');
-      this.reset();
-    } catch(e) {
-        this.toastService.addToast('Falha ao aplicar ajustes.', 'error');
-    } finally {
-      this.isLoading.set(false);
+        this.countForm = this.fb.group({ itemsToCount: this.fb.array(controls) });
     }
-  }
 
-  reset() {
-    this.step.set('idle');
-    this.itemsToCount.set([]);
-    this.suggestionReason.set('');
-    this.discrepancies.set([]);
-    this.countForm = this.fb.group({ itemsToCount: this.fb.array([]) });
-  }
+    reviewCount() {
+        const countedValues = this.itemsToCountArray.value;
+        const discrepancies = this.itemsToCount().map((item, index) => {
+          const counted = countedValues[index].countedQuantity ?? 0;
+          return {
+            id: item.id,
+            name: item.name,
+            systemQuantity: item.quantity,
+            countedQuantity: counted,
+            difference: counted - item.quantity,
+          };
+        }).filter(d => d.difference !== 0);
 
-  async startScanner() {
-    this.isScannerOpen.set(true);
-    this.scannerError.set(null);
-    this.codeReader = new BrowserMultiFormatReader();
+        this.discrepancies.set(discrepancies);
+        this.step.set('review');
+    }
 
-    try {
-      const videoInputDevices = await this.codeReader.listVideoInputDevices();
-      if (videoInputDevices.length === 0) throw new Error('Nenhuma câmera encontrada.');
-      
-      const rearCamera = videoInputDevices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('trás'));
-      const deviceId = rearCamera ? rearCamera.deviceId : videoInputDevices[0].deviceId;
-      
-      setTimeout(() => {
-        const videoEl = this.scannerVideoElement()?.nativeElement;
-        if (videoEl) {
-          this.codeReader?.decodeFromVideoDevice(deviceId, videoEl, (result, error) => {
-            if (result) {
-              this.handleScannedCode(result.getText());
-              this.stopScanner();
+    async confirmAdjustments() {
+        this.isLoading.set(true);
+        try {
+            const discrepancies = this.discrepancies();
+            for (const discrepancy of discrepancies) {
+                await this.dbService.adjustItemQuantity(
+                    discrepancy.id,
+                    discrepancy.countedQuantity,
+                    `Ajuste via Contagem Cíclica. Contado: ${discrepancy.countedQuantity}, Sistema: ${discrepancy.systemQuantity}.`,
+                    false
+                );
             }
-            if (error && !(error instanceof NotFoundException)) {
-              this.scannerError.set('Ocorreu um erro com o scanner.');
+            this.toastService.addToast('Contagem cíclica finalizada e ajustes aplicados!', 'success');
+            this.reset();
+        } catch(e) {
+            this.toastService.addToast('Falha ao aplicar ajustes da contagem.', 'error');
+        } finally {
+            this.isLoading.set(false);
+        }
+    }
+
+    reset() {
+        this.step.set('idle');
+        this.suggestionReason.set('');
+        this.itemsToCount.set([]);
+        this.discrepancies.set([]);
+    }
+
+    async startScanner() {
+        this.isScannerOpen.set(true);
+        this.scannerError.set(null);
+        this.codeReader = new BrowserMultiFormatReader();
+    
+        try {
+          const videoInputDevices = await this.codeReader.listVideoInputDevices();
+          if (videoInputDevices.length === 0) throw new Error('Nenhuma câmera encontrada.');
+          
+          const rearCamera = videoInputDevices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('trás'));
+          const deviceId = rearCamera ? rearCamera.deviceId : videoInputDevices[0].deviceId;
+          
+          setTimeout(() => {
+            const videoEl = this.scannerVideoElement()?.nativeElement;
+            if (videoEl) {
+              this.codeReader?.decodeFromVideoDevice(deviceId, videoEl, (result, error) => {
+                if (result) {
+                  this.handleScannedCode(result.getText());
+                  this.stopScanner();
+                }
+                if (error && !(error instanceof NotFoundException)) {
+                  this.scannerError.set('Ocorreu um erro com o scanner.');
+                }
+              });
             }
-          });
+          }, 100);
+    
+        } catch (err: any) {
+          this.scannerError.set(err.message || 'Não foi possível acessar a câmera.');
         }
-      }, 100);
-
-    } catch (err: any) {
-      this.scannerError.set(err.message || 'Não foi possível acessar a câmera.');
     }
-  }
 
-  stopScanner() {
-    if (this.codeReader) {
-      this.codeReader.reset();
-      this.codeReader = null;
-    }
-    this.isScannerOpen.set(false);
-  }
-
-  handleScannedCode(code: string) {
-    const itemIndex = this.itemsToCount().findIndex(i => i.id === code);
-    if (itemIndex > -1) {
-        if ('vibrate' in navigator) navigator.vibrate(100);
-        this.toastService.addToast(`Item "${this.itemsToCount()[itemIndex].name}" encontrado!`, 'success');
-        
-        // Focus on the input
-        const rowElement = document.querySelectorAll('tbody tr, .md\\:hidden > div')[itemIndex];
-        const inputElement = rowElement?.querySelector('input[type="number"]');
-        if (inputElement) {
-            (inputElement as HTMLElement).focus();
-            rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    stopScanner() {
+        if (this.codeReader) {
+          this.codeReader.reset();
+          this.codeReader = null;
         }
-    } else {
-        if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
-        this.toastService.addToast(`Item com código escaneado não está na lista de contagem atual.`, 'error');
+        this.isScannerOpen.set(false);
     }
-  }
+    
+    handleScannedCode(code: string) {
+        const itemIndex = this.itemsToCount().findIndex(i => i.id === code);
+        if (itemIndex > -1) {
+            if ('vibrate' in navigator) navigator.vibrate(100);
+            this.toastService.addToast(`Item "${this.itemsToCount()[itemIndex].name}" encontrado!`, 'success');
+            
+            // Focus on the input
+            const rowElements = document.querySelectorAll('tbody tr, .md\\:hidden > div');
+            if (rowElements.length > itemIndex) {
+              const rowElement = rowElements[itemIndex];
+              const inputElement = rowElement?.querySelector('input[type="number"]');
+              if (inputElement) {
+                  (inputElement as HTMLElement).focus();
+                  rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }
+        } else {
+            if ('vibrate' in navigator) navigator.vibrate([100, 50, 100]);
+            this.toastService.addToast(`Item escaneado não está na lista de contagem atual.`, 'error');
+        }
+    }
 }

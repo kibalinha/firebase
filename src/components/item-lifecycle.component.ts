@@ -110,89 +110,82 @@ interface TimelineEvent {
   `
 })
 export class ItemLifecycleComponent {
-  private dbService: DatabaseService;
+  private dbService = inject(DatabaseService);
   navigateBack = output<View>();
 
-  item: Signal<Item | null>;
+  item: Signal<Item | null> = this.dbService.currentItemForLifecycle;
   
-  timelineEvents: Signal<TimelineEvent[]>;
+  timelineEvents: Signal<TimelineEvent[]> = computed(() => {
+    const currentItem = this.item();
+    if (!currentItem) return [];
 
-  constructor() {
-    this.dbService = inject(DatabaseService);
-    this.item = this.dbService.currentItemForLifecycle;
-    
-    this.timelineEvents = computed((): TimelineEvent[] => {
-      const currentItem = this.item();
-      if (!currentItem) return [];
-  
-      const allMovements = this.dbService.db().movements;
-      const allAuditLogs = this.dbService.db().auditLogs;
-  
-      const events: TimelineEvent[] = [];
-  
-      // 1. Add Movements
-      allMovements
-        .filter(m => m.itemId === currentItem.id)
-        .forEach(m => {
-          const isAdjustment = !m.technicianId && m.notes && (m.notes.toLowerCase().includes('ajuste') || m.notes.toLowerCase().includes('inventário físico'));
-          const isPurchase = m.type === 'in' && m.notes && m.notes.startsWith('Recebimento da Ordem de Compra');
+    const allMovements = this.dbService.db().movements;
+    const allAuditLogs = this.dbService.db().auditLogs;
 
-          if (isPurchase) {
-              const poNumber = m.notes.replace('Recebimento da Ordem de Compra ', '');
-              const po = this.dbService.db().purchaseOrders.find(p => p.poNumber === poNumber);
-              const poItem = po?.items.find(i => i.itemId === currentItem.id);
-              
-              events.push({
-                  date: m.date,
-                  type: 'movement-in',
-                  title: 'Entrada por Compra',
-                  details: { ...m, unitPrice: poItem?.unitPrice },
-                  icon: '💰'
-              });
-          } else if (isAdjustment) {
-              events.push({
-                  date: m.date,
-                  type: m.type === 'in' ? 'adjustment-in' : 'adjustment-out',
-                  title: 'Ajuste de Estoque',
-                  details: m,
-                  icon: '✏️'
-              });
-          } else {
-              events.push({
-                  date: m.date,
-                  type: m.type === 'in' ? 'movement-in' : 'movement-out',
-                  title: m.type === 'in' ? 'Entrada de Material' : 'Saída de Material',
-                  details: m,
-                  icon: m.type === 'in' ? '📦' : '🔧'
-              });
-          }
-        });
-  
-      // 2. Add Audit Logs related to this item
-      allAuditLogs
-        .filter(log => log.details.toLowerCase().includes(currentItem.name.toLowerCase()))
-        .forEach(log => {
-          let type: TimelineEvent['type'] = 'log';
-          let icon = 'ℹ️';
-  
-          if (log.action === 'CREATE_ITEM') { type = 'creation'; icon = '✨'; }
-          if (log.action === 'UPDATE_ITEM') { type = 'edit'; icon = '📝'; }
-          if (log.action === 'MOVE_TO_RED_SHELF') { type = 'redshelf-add'; icon = '🔴'; }
-          if (log.action === 'RESOLVE_RED_SHELF') { type = 'redshelf-resolve'; icon = '🟢'; }
-          
-          events.push({
-              date: log.timestamp,
-              type: type,
-              title: this.formatActionTitle(log.action),
-              details: log.details,
-              icon: icon
-          });
-        });
+    const events: TimelineEvent[] = [];
+
+    // 1. Add Movements
+    allMovements
+      .filter(m => m.itemId === currentItem.id)
+      .forEach(m => {
+        const isAdjustment = !m.technicianId && m.notes && (m.notes.toLowerCase().includes('ajuste') || m.notes.toLowerCase().includes('inventário físico'));
+        const isPurchase = m.type === 'in' && m.notes && m.notes.startsWith('Recebimento da Ordem de Compra');
+
+        if (isPurchase) {
+            const poNumber = m.notes.replace('Recebimento da Ordem de Compra ', '');
+            const po = this.dbService.db().purchaseOrders.find(p => p.poNumber === poNumber);
+            const poItem = po?.items.find(i => i.itemId === currentItem.id);
+            
+            events.push({
+                date: m.date,
+                type: 'movement-in',
+                title: 'Entrada por Compra',
+                details: { ...m, unitPrice: poItem?.unitPrice },
+                icon: '💰'
+            });
+        } else if (isAdjustment) {
+            events.push({
+                date: m.date,
+                type: m.type === 'in' ? 'adjustment-in' : 'adjustment-out',
+                title: 'Ajuste de Estoque',
+                details: m,
+                icon: '✏️'
+            });
+        } else {
+            events.push({
+                date: m.date,
+                type: m.type === 'in' ? 'movement-in' : 'movement-out',
+                title: m.type === 'in' ? 'Entrada de Material' : 'Saída de Material',
+                details: m,
+                icon: m.type === 'in' ? '📦' : '🔧'
+            });
+        }
+      });
+
+    // 2. Add Audit Logs related to this item
+    allAuditLogs
+      .filter(log => log.details.toLowerCase().includes(currentItem.name.toLowerCase()))
+      .forEach(log => {
+        let type: TimelineEvent['type'] = 'log';
+        let icon = 'ℹ️';
+
+        if (log.action === 'CREATE_ITEM') { type = 'creation'; icon = '✨'; }
+        if (log.action === 'UPDATE_ITEM') { type = 'edit'; icon = '📝'; }
+        if (log.action === 'MOVE_TO_RED_SHELF') { type = 'redshelf-add'; icon = '🔴'; }
+        if (log.action === 'RESOLVE_RED_SHELF') { type = 'redshelf-resolve'; icon = '🟢'; }
         
-      // 3. Sort all events chronologically
-      return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    });
-  }
+        events.push({
+            date: log.timestamp,
+            type: type,
+            title: this.formatActionTitle(log.action),
+            details: log.details,
+            icon: icon
+        });
+      });
+      
+    // 3. Sort all events chronologically
+    return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  });
 
   getTechnicianName(technicianId?: string | null): string {
     if (!technicianId) return 'N/A';

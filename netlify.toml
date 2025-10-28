@@ -1,8 +1,0 @@
-[build]
-  command = "echo 'No build step required'"
-  publish = "."
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
